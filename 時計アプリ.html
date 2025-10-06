@@ -1,0 +1,44 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>時計アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <style>
+    body {
+      background: #111;
+      color: #0ff;
+      font-family: 'Courier New', monospace;
+      font-size: 4em;
+      text-align: center;
+      margin-top: 20%;
+    }
+  </style>
+</head>
+<body>
+  <div id="clock">00:00:00.00</div>
+
+  <script>
+    function updateClock() {
+      const now = new Date()
+      const h = String(now.getHours()).padStart(2, '0')
+      const m = String(now.getMinutes()).padStart(2, '0')
+      const s = String(now.getSeconds()).padStart(2, '0')
+      const ms = String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0')
+      document.getElementById('clock').textContent = `${h}:${m}:${s}.${ms}`
+    }
+
+    setInterval(updateClock, 10)
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('serviceWorker.js')
+        .then(() => console.log('✅ Service Worker 登録成功'))
+        .catch(err => console.error('❌ Service Worker 登録失敗:', err))
+    }
+  </script>
+</body>
+</html>
