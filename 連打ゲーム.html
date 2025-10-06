@@ -1,0 +1,147 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>連打ゲーム</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+      padding-top: 50px;
+    }
+
+    h1 {
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+
+    #score {
+      font-size: 3em;
+      margin: 20px 0;
+    }
+
+    #timer {
+      font-size: 1.5em;
+      margin-bottom: 10px;
+    }
+
+    #highScore {
+      font-size: 1.2em;
+      color: #555;
+      margin-bottom: 20px;
+    }
+
+    button {
+      font-size: 20px;
+      padding: 15px 30px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #startBtn {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    #tapBtn {
+      background-color: #2196F3;
+      color: white;
+    }
+
+    #tapBtn:disabled {
+      background-color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>連打ゲーム</h1>
+  <p>10秒で何回押せるか挑戦しよう！</p>
+
+  <div id="score">0</div>
+  <div id="timer">残り時間: 10秒</div>
+  <div id="highScore">最高記録: 0 回</div>
+
+  <button id="startBtn" onclick="startGame()">スタート</button>
+  <button id="tapBtn" onmousedown="handleMouseDown()" onmouseup="handleMouseUp()" onmouseleave="handleMouseUp()" disabled>連打！</button>
+
+  <p id="result"></p>
+
+  <script>
+    let score = 0;
+    let timer = null;
+    let countdown = 10;
+    let countdownInterval = null;
+    let highScore = 0;
+    let isHolding = false;
+
+    function startGame() {
+      score = 0;
+      countdown = 10;
+      document.getElementById("score").textContent = score;
+      document.getElementById("result").textContent = "";
+      document.getElementById("tapBtn").disabled = false;
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("timer").textContent = `残り時間: ${countdown}秒`;
+
+      countdownInterval = setInterval(() => {
+        countdown--;
+        document.getElementById("timer").textContent = `残り時間: ${countdown}秒`;
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+        }
+      }, 1000);
+
+      timer = setTimeout(endGame, 10000);
+    }
+
+    function tap() {
+      if (!document.getElementById("tapBtn").disabled) {
+        score++;
+        document.getElementById("score").textContent = score;
+      }
+    }
+
+    function handleMouseDown() {
+      if (!isHolding) {
+        tap();
+        isHolding = true;
+      }
+    }
+
+    function handleMouseUp() {
+      isHolding = false;
+    }
+
+    function endGame() {
+      document.getElementById("tapBtn").disabled = true;
+      document.getElementById("startBtn").disabled = false;
+      document.getElementById("result").textContent = `結果：${score} 回連打しました！`;
+
+      if (score > highScore) {
+        highScore = score;
+        document.getElementById("highScore").textContent = `最高記録: ${highScore} 回`;
+      }
+    }
+
+    // キーボードのスペースキーで連打可能にする（長押し防止）
+    let spacePressed = false;
+    document.addEventListener("keydown", function(event) {
+      if (event.code === "Space" && !spacePressed) {
+        event.preventDefault();
+        tap();
+        spacePressed = true;
+      }
+    });
+
+    document.addEventListener("keyup", function(event) {
+      if (event.code === "Space") {
+        spacePressed = false;
+      }
+    });
+  </script>
+</body>
+</html>
