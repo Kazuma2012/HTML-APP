@@ -31,20 +31,33 @@ fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`)
   .then(data => {
     const container = document.getElementById('app-container');
     data.forEach(item => {
-      if(item.type !== 'file') return; // フォルダは無視
-      if(!item.name.endsWith('.html')) return; // HTMLファイルのみ表示
+      if(item.type !== 'file') return;
 
       const card = document.createElement('div');
       card.className = 'card';
 
       const icon = document.createElement('div');
       icon.className = 'icon';
-      icon.textContent = '🌐';
 
       const link = document.createElement('a');
       link.textContent = item.name;
-      link.href = item.html_url; // GitHub上で開く場合
-      link.target = '_blank';
+
+      // ファイルタイプに応じてアイコンとリンク挙動を変更
+      if(item.name.endsWith('.html')) {
+        icon.textContent = '🌐';
+        // GitHub Pages上で直接開くURLを生成
+        const ghPagesUrl = `https://${owner}.github.io/${repo}/${item.name}`;
+        link.href = ghPagesUrl;
+        link.target = '_blank';
+      } else if(item.name.endsWith('.zip') || item.name.endsWith('.exe')) {
+        icon.textContent = '📦';
+        link.href = item.download_url;
+        link.setAttribute('download', '');
+      } else {
+        icon.textContent = '📄';
+        link.href = item.download_url;
+        link.setAttribute('download', '');
+      }
 
       card.appendChild(icon);
       card.appendChild(link);
