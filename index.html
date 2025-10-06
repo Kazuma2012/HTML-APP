@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>アプリ一覧</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+  h1 { text-align: center; }
+  .container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+  .card {
+    background: white; border-radius: 10px; padding: 20px; width: 180px;
+    text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;
+  }
+  .card:hover { transform: translateY(-5px); box-shadow: 0 8px 12px rgba(0,0,0,0.2); }
+  .icon { font-size: 40px; margin-bottom: 10px; }
+  a { text-decoration: none; color: #007bff; font-weight: bold; word-break: break-word; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<h1>アプリ一覧</h1>
+<div class="container" id="app-container"></div>
+
+<script>
+const owner = 'Kazuma2012';
+const repo = 'My-APP';
+const path = ''; // ルートディレクトリの場合は空文字
+
+fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`)
+  .then(response => response.json())
+  .then(data => {
+    const container = document.getElementById('app-container');
+    data.forEach(item => {
+      if(item.type !== 'file') return; // フォルダは無視
+      if(!item.name.endsWith('.html')) return; // HTMLファイルのみ表示
+
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const icon = document.createElement('div');
+      icon.className = 'icon';
+      icon.textContent = '🌐';
+
+      const link = document.createElement('a');
+      link.textContent = item.name;
+      link.href = item.html_url; // GitHub上で開く場合
+      link.target = '_blank';
+
+      card.appendChild(icon);
+      card.appendChild(link);
+      container.appendChild(card);
+    });
+  })
+  .catch(err => console.error('GitHub API 読み込みエラー:', err));
+</script>
+</body>
+</html>
