@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>指紋スキャナー</title>
+  <style>
+    body {
+      background: #fff;
+      color: #000;
+      font-family: sans-serif;
+      text-align: center;
+      padding-top: 50px;
+    }
+
+    .scanner {
+      width: 200px;
+      height: 300px;
+      margin: auto;
+      border: 3px solid #0ff;
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+      background-color: #ddd;
+      background-image: url('https://illust8.com/wp-content/uploads/2021/07/fingerprint_14036.png');
+      background-size: 80%;
+      background-position: center;
+      background-repeat: no-repeat;
+      cursor: pointer;
+    }
+
+    .scanner-line {
+      width: 100%;
+      height: 10px;
+      background: #0ff;
+      position: absolute;
+      top: -10px;
+      display: none;
+    }
+
+    .scanning .scanner-line {
+      display: block;
+      animation: scan 1.2s linear 6 alternate; /* ゆっくり6往復 */
+    }
+
+    @keyframes scan {
+      0% { top: -10px; }
+      100% { top: 310px; }
+    }
+
+    .result {
+      margin-top: 20px;
+      font-size: 1.5em;
+      height: 1.5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>指紋認証スキャナー</h1>
+  <div class="scanner" id="scanner">
+    <div class="scanner-line"></div>
+  </div>
+  <div class="result" id="result">指を置いてください👇</div>
+
+  <script>
+    const scanner = document.getElementById('scanner');
+    const result = document.getElementById('result');
+    let scanning = false;
+    let scanTimeout;
+
+    scanner.addEventListener('mousedown', startScan);
+    scanner.addEventListener('touchstart', startScan);
+
+    scanner.addEventListener('mouseup', cancelScan);
+    scanner.addEventListener('mouseleave', cancelScan);
+    scanner.addEventListener('touchend', cancelScan);
+    scanner.addEventListener('touchcancel', cancelScan);
+
+    function startScan() {
+      if (scanning) return;
+      scanning = true;
+      scanner.classList.add('scanning');
+      result.textContent = 'スキャン中...🔍';
+
+      // 1.2秒 × 6往復 = 7.2秒
+      scanTimeout = setTimeout(() => {
+        result.textContent = '認証成功！✅';
+        scanner.classList.remove('scanning');
+        scanning = false;
+      }, 7200);
+    }
+
+    function cancelScan() {
+      if (!scanning) return;
+      clearTimeout(scanTimeout);
+      result.textContent = 'スキャン失敗（指を離しました）❌';
+      scanner.classList.remove('scanning');
+      scanning = false;
+    }
+  </script>
+</body>
+</html>
