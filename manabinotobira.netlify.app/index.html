@@ -1,0 +1,183 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>まなびのトビラ ログイン</title>
+<!-- favicon -->
+<link rel="icon" type="image/webp" href="https://i.postimg.cc/L4fXm0kP/assets-task-01k4pqvmrdfpq8j99gfrzgj1vk-1757404936-img-0.webp">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f4f8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+.login-box {
+  background: white;
+  padding: 32px;        /* 少し広め */
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  width: 350px;         /* 少し広く */
+  text-align: center;
+}
+.login-box img {
+  display: block;
+  margin: 0 auto 18px auto; /* 下の余白少し広め */
+  width: 220px;              /* ロゴを少し大きく */
+}
+h2 {
+  margin-bottom: 20px;
+}
+input[type="text"], input[type="password"] {
+  width: 100%;
+  padding: 12px;       /* 少し広め */
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 16px;     /* 少し大きめ */
+}
+button {
+  width: 100%;
+  padding: 12px;       /* 少し大きめ */
+  margin: 10px 0;
+  border: none;
+  border-radius: 5px;
+  background: #0078d7;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+button:hover {
+  background: #005fa3;
+}
+.other-login {
+  margin-top: 20px;
+  text-align: left;
+}
+.other-login-options {
+  display: none;
+  margin-top: 10px;
+}
+.other-login-options button {
+  width: 100%;
+  padding: 12px;       /* 少し大きめ */
+  margin: 10px 0;
+  border: none;
+  border-radius: 5px;
+  background: #eee;
+  color: #333;
+  font-size: 16px;     /* 統一感 */
+  cursor: pointer;
+}
+.other-login-options button:hover {
+  background: #ddd;
+}
+#login-message {
+  margin-top: 13px;
+  padding: 11px;
+  border-radius: 6px;
+  display: none;
+  font-weight: 600;
+  text-align: center;
+  background-color: rgb(255, 240, 240);
+  color: rgb(176, 0, 32);
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: clamp(13px, 2vw, 15px); /* 少し大きめ */
+}
+</style>
+
+
+
+</head>
+<body>
+<div class="login-box">
+  <!-- ロゴ画像 -->
+  <img src="https://i.postimg.cc/85sgfcNq/assets-task-01k4pqmgr4f0wtbg08eg9q4ssq-1757404702-img-0.webp" alt="システムのロゴ">
+  <form>
+    <input type="text" placeholder="ユーザー名">
+    <input type="password" placeholder="パスワード">
+    <button type="submit">ログイン</button>
+  </form>
+  <div id="login-message" role="alert"></div>
+ <div class="other-login">
+  <button type="button" onclick="toggleOtherLogin()">その他のログイン</button>
+  <div class="other-login-options" id="other-login-options" style="display: none;">
+    <button>Googleでログイン</button>
+    <button>Microsoftでログイン</button>
+    <button>LINEでログイン</button>
+    <button onclick="guestLogin()">ゲストとしてログイン</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+// その他のログイン切替
+function toggleOtherLogin() {
+  const options = document.getElementById("other-login-options");
+  if (options.style.display === "none" || options.style.display === "") {
+    options.style.display = "block";
+  } else {
+    options.style.display = "none";
+  }
+}
+
+function guestLogin() {
+  // ゲストログインフラグをセット
+  localStorage.setItem('guestLoggedIn', 'true');
+  window.location.href = "home.html";
+}
+
+
+// エラーメッセージ表示
+(function() {
+  const form = document.querySelector('form');
+  const msg = document.getElementById('login-message');
+  if (!form || !msg) return;
+
+  let hideTimer = null;
+
+  function showMessage(text) {
+    msg.textContent = text;
+    msg.style.display = 'block';
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      msg.style.display = 'none';
+    }, 4000);
+  }
+
+  function showRandomError() {
+    msg.style.display = 'none';
+    setTimeout(() => {
+      const r = Math.random();
+      if (r < 0.5) {
+        showMessage('ユーザー名または、パスワードが違います');
+      } else {
+        showMessage('エラーが発生しました。もう一度お試しください');
+      }
+    }, 250);
+  }
+
+  // フォームのログインボタン
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    showRandomError();
+  });
+
+  // その他ログインのボタン (ゲスト以外)
+  document.querySelectorAll('.other-login-options button').forEach(btn => {
+    if (btn.textContent.includes('ゲスト')) return;
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      showRandomError();
+    });
+  });
+})();
+</script>
+</body>
+</html>
