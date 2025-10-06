@@ -1,0 +1,101 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音楽検索（Jamendo API）</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      background-color: #f0f4f8;
+    }
+    .search-container {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    input[type="text"] {
+      padding: 0.5rem;
+      width: 60%;
+      font-size: 1rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      margin-left: 0.5rem;
+      cursor: pointer;
+    }
+    .result-item {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    audio {
+      width: 100%;
+      margin-top: 0.5rem;
+    }
+    img {
+      margin-top: 0.5rem;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="search-container">
+    <h1>🎵 音楽検索（Jamendo API）</h1>
+    <input type="text" id="search-query" placeholder="アーティストや曲名を検索..." />
+    <button onclick="searchJamendo()">検索</button>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const CLIENT_ID = '485a7b2b'; // ← ここに本物のID！
+
+    function searchJamendo() {
+      const query = document.getElementById('search-query').value.trim();
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '';
+
+      if (!query) {
+        resultsDiv.innerHTML = '<p>検索キーワードを入力してください。</p>';
+        return;
+      }
+
+      const url = `https://api.jamendo.com/v3.0/tracks/?namesearch=${encodeURIComponent(query)}&format=json&limit=10&client_id=${CLIENT_ID}`;
+
+      fetch(url)
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTPエラー: ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          if (data.results.length === 0) {
+            resultsDiv.innerHTML = '<p>検索結果が見つかりませんでした。</p>';
+            return;
+          }
+
+          data.results.forEach(track => {
+            const item = document.createElement('div');
+            item.className = 'result-item';
+            item.innerHTML = `
+              <h3>${track.name}</h3>
+              <p>アーティスト: ${track.artist_name}</p>
+              <audio controls src="${track.audio}" preload="none"></audio>
+              ${track.album_image ? `<img src="${track.album_image}" width="120">` : ''}
+              <p><a href="${track.shareurl}" target="_blank">Jamendoで見る</a></p>
+            `;
+            resultsDiv.appendChild(item);
+          });
+        })
+        .catch(err => {
+          console.error('エラー:', err);
+          resultsDiv.innerHTML = '<p>データ取得中にエラーが発生しました。</p>';
+        });
+    }
+  </script>
+</body>
+</html>
