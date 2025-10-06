@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <title>3Dホラー迷路ゲーム</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #blocker {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        #instructions {
+            width: 80%;
+            max-width: 500px;
+            cursor: pointer;
+        }
+        #instructions h1 {
+            font-size: 2.5em;
+            margin-bottom: 0.5em;
+        }
+        #instructions p {
+            font-size: 1.2em;
+            line-height: 1.5;
+        }
+        #winMessage {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+            display: none; /* 初期状態では非表示 */
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 5em;
+            color: #ff0000;
+            text-shadow: 0 0 10px #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div id="blocker">
+        <div id="instructions">
+            <h1>ホラーメイズ</h1>
+            <p>
+                クリックしてスタート<br>
+                移動: W, A, S, D<br>
+                視点: マウス<br>
+                (ESCでカーソルロック解除)
+            </p>
+        </div>
+    </div>
+    <div id="winMessage">
+        脱出成功
+    </div>
+
+    <!-- Three.jsのライブラリをCDNから読み込み -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        // --- グローバル変数定義 ---
+        let camera, scene, renderer, controls;
+        const objects = []; // 衝突判定の対象となるオブジェクト（壁）を格納
+        let raycaster;
+
+        // プレイヤーの移動に関する変数
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        const playerSpeed = 0.5; // プレイヤーの速度を調整 (4.0 -> 0.5)
+        const playerHeight = 1.8;
+        const wallSize = 5; // 壁や通路のサイズ
+
+        // --- 迷路のレイアウト ---
+        // 0: 通路, 1: 壁, 2: スタート地点, 3: ゴール
+        const mazeLayout = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+            [1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1],
+            [1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1],
+            [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+        let goalPosition;
+
+        const clock = new THREE.Clock();
+
+        init();
+        animate();
+
+        // --- 初期化関数 ---
+        function init() {
+            // シーンの作成
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            scene.fog = new THREE.Fog(0x000000, 0, 6 * wallSize);
+
+            // カメラの作成
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.y = playerHeight;
+
+            // レンダラーの作成
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // --- ポインターロックコントロール ---
+            controls = new PointerLockControls(camera, document.body);
+            const blocker = document.getElementById('blocker');
+            const instructions = document.getElementById('instructions');
+
+            instructions.addEventListener('click', function () {
+                controls.lock();
+            });
+
+            controls.addEventListener('lock', function () {
+                instructions.style.display = 'none';
+                blocker.style.display = 'none';
+            });
+
+            controls.addEventListener('unlock', function () {
+                blocker.style.display = 'flex';
+                instructions.style.display = '';
+            });
+
+            scene.add(controls.getObject());
+
+            // --- キーボードイベントリスナー ---
+            const onKeyDown = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = true;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = true;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = true;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = true;
+                        break;
+                }
+            };
+
+            const onKeyUp = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = false;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = false;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = false;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = false;
+                        break;
+                }
+            };
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            // --- 衝突判定用のRaycaster ---
+            raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
+
+            // --- ライトの作成 ---
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // 全体を弱く照らす
+            scene.add(ambientLight);
+
+            // プレイヤーの懐中電灯のようなライト
+            const pointLight = new THREE.PointLight(0xffffff, 1.0, 20);
+            pointLight.castShadow = true;
+            camera.add(pointLight); // カメラにライトを追加
+
+            // --- 迷路の生成 ---
+            const textureLoader = new THREE.TextureLoader();
+            const wallTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg');
+            wallTexture.wrapS = THREE.RepeatWrapping;
+            wallTexture.wrapT = THREE.RepeatWrapping;
+            wallTexture.repeat.set(1, 1);
+            const wallMaterial = new THREE.MeshStandardMaterial({ map: wallTexture });
+
+            const floorTexture = textureLoader.load('https://threejs.org/examples/textures/hardwood2_diffuse.jpg');
+            floorTexture.wrapS = THREE.RepeatWrapping;
+            floorTexture.wrapT = THREE.RepeatWrapping;
+            floorTexture.repeat.set(mazeLayout[0].length, mazeLayout.length);
+            const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTexture });
+
+            const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+            const wallGeometry = new THREE.BoxGeometry(wallSize, wallSize, wallSize);
+            const mazeWidth = mazeLayout[0].length * wallSize;
+            const mazeDepth = mazeLayout.length * wallSize;
+            
+            // 迷路のオフセットを計算して中央に配置
+            const offsetX = -mazeWidth / 2;
+            const offsetZ = -mazeDepth / 2;
+
+            for (let i = 0; i < mazeLayout.length; i++) {
+                for (let j = 0; j < mazeLayout[i].length; j++) {
+                    const x = j * wallSize + offsetX;
+                    const z = i * wallSize + offsetZ;
+
+                    if (mazeLayout[i][j] === 1) { // 壁
+                        const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                        wall.position.set(x, wallSize / 2, z);
+                        scene.add(wall);
+                        objects.push(wall);
+                    } else if (mazeLayout[i][j] === 2) { // スタート地点
+                        controls.getObject().position.set(x, playerHeight, z);
+                    } else if (mazeLayout[i][j] === 3) { // ゴール
+                        goalPosition = new THREE.Vector3(x, playerHeight, z);
+                        // ゴール地点に目印を置く（例：光る球体）
+                        const goalMarkerGeo = new THREE.SphereGeometry(wallSize / 4, 16, 16);
+                        const goalMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffd700, wireframe: true });
+                        const goalMarker = new THREE.Mesh(goalMarkerGeo, goalMarkerMat);
+                        goalMarker.position.set(x, playerHeight, z);
+                        scene.add(goalMarker);
+                    }
+                }
+            }
+
+            // 床
+            const floorGeometry = new THREE.PlaneGeometry(mazeWidth, mazeDepth);
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(0, 0, 0);
+            scene.add(floor);
+
+            // 天井
+            const ceiling = new THREE.Mesh(floorGeometry, ceilingMaterial);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.set(0, wallSize, 0);
+            scene.add(ceiling);
+
+            // --- ウィンドウリサイズ対応 ---
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // --- ウィンドウリサイズ関数 ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- アニメーションループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime(); // 揺れのために経過時間を取得
+
+            if (controls.isLocked === true) {
+                const playerPosition = controls.getObject().position;
+
+                // 速度を減衰させる（慣性を生む）
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+
+                // 移動方向の計算
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize(); // 全方向で同じ速度にする
+
+                // キー入力に応じて速度を更新
+                if (moveForward || moveBackward) velocity.z -= direction.z * playerSpeed * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * playerSpeed * delta;
+                
+                // 衝突をチェックしながら移動
+                const oldPosition = playerPosition.clone();
+                
+                controls.moveRight(-velocity.x * playerSpeed);
+                controls.moveForward(-velocity.z * playerSpeed);
+                
+                let collision = false;
+                for(let i=0; i < objects.length; i++) {
+                    const box = new THREE.Box3().setFromObject(objects[i]);
+                    // プレイヤーの当たり判定用のボックスを生成
+                    const playerCollider = new THREE.Box3().setFromCenterAndSize(
+                        playerPosition,
+                        new THREE.Vector3(1, playerHeight, 1) // 当たり判定のサイズ
+                    );
+                    if(box.intersectsBox(playerCollider)) {
+                        collision = true;
+                        break;
+                    }
+                }
+                
+                if(collision) {
+                    playerPosition.copy(oldPosition); // 衝突したら元の位置に戻す
+                    // 衝突時は速度もリセットして、壁にめり込み続けるのを防ぐ
+                    velocity.x = 0;
+                    velocity.z = 0;
+                }
+
+                // --- 歩行時の揺れ（ヘッドボブ）処理 ---
+                // プレイヤーが動いているかを判定
+                const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+
+                if (isMoving && !collision) {
+                    const bobSpeed = 10; // 揺れの速さ
+                    const bobAmount = 0.05; // 揺れの大きさ
+                    // sin波を使って上下の動きを生成
+                    const bobOffset = Math.sin(time * bobSpeed) * bobAmount;
+                    // プレイヤーの基本の高さにオフセットを加える
+                    playerPosition.y = playerHeight + bobOffset;
+                } else {
+                    // 停止している場合は、滑らかに元の高さに戻す
+                    playerPosition.y += (playerHeight - playerPosition.y) * 5 * delta;
+                }
+
+                // --- ゴール判定 ---
+                if (goalPosition && playerPosition.distanceTo(goalPosition) < wallSize / 2) {
+                    const winMessage = document.getElementById('winMessage');
+                    winMessage.style.display = 'flex';
+                    controls.unlock();
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

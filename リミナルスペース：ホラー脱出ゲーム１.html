@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <title>リミナルスペース：ホラー脱出ゲーム</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Helvetica', sans-serif; }
+        canvas { display: block; }
+        #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); }
+        #instructions {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 18px;
+            color: #fff;
+            cursor: pointer;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            border: 1px solid white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none; /* マウスイベントを透過させる */
+        }
+        .message {
+            position: absolute;
+            bottom: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 25px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 8px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="blocker">
+        <div id="instructions">
+            <h1>リミナルスペース</h1>
+            <p>あなたは不気味な空間に閉じ込められた。</p>
+            <p>どこまでも続く廊下と、空っぽの部屋。</p>
+            <p>出口を見つけ出せ。</p>
+            <br>
+            <p>操作方法:</p>
+            <p>W, A, S, D: 移動</p>
+            <p>マウス: 視点移動</p>
+            <p>クリック: インタラクト</p>
+            <br>
+            <p><strong>クリックして開始</strong></p>
+        </div>
+    </div>
+    <div id="crosshair" style="display: none;"></div>
+    <div id="messageBox" class="message"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <script type="module">
+        // PointerLockControlsをインポート
+        import { PointerLockControls } from 'https://cdn.skypack.dev/three@0.128.0/examples/jsm/controls/PointerLockControls.js';
+
+        // --- グローバル変数 ---
+        let camera, scene, renderer, controls;
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        let prevTime = performance.now();
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        
+        // ★追加: ヘッドボブ（頭の揺れ）用
+        let bobbingTimer = 0;
+        const defaultCameraY = 1.7;
+
+        // 衝突検出とインタラクション用
+        const objects = []; // 衝突判定の対象となるオブジェクト
+        const interactiveObjects = []; // インタラクション可能なオブジェクト
+        let raycaster; // マウスクリックのインタラクションで使用
+
+        // ゲームの状態
+        let hasKey = false;
+        let gameEnded = false;
+
+        // オブジェクト参照
+        let flickeringLight, keyObject, lockedDoor;
+
+        // サウンド
+        let ambientSynth, noise, doorCreakSound, whisperSynth;
+
+        init();
+        animate();
+
+        // --- 初期化関数 ---
+        function init() {
+            // シーン
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            scene.fog = new THREE.Fog(0x000000, 1, 20); 
+
+            // カメラ
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, defaultCameraY, 0); 
+
+            // レンダラー
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // ライト
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.15);
+            scene.add(ambientLight);
+
+            flickeringLight = new THREE.PointLight(0xffeebb, 0.9, 50, 2);
+            flickeringLight.castShadow = true;
+            scene.add(flickeringLight);
+
+            // コントローラー (PointerLockControls)
+            controls = new PointerLockControls(camera, document.body);
+            const blocker = document.getElementById('blocker');
+            const instructions = document.getElementById('instructions');
+            const crosshair = document.getElementById('crosshair');
+
+            instructions.addEventListener('click', function () {
+                controls.lock();
+            });
+
+            controls.addEventListener('lock', function () {
+                instructions.style.display = 'none';
+                blocker.style.display = 'none';
+                crosshair.style.display = 'block';
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                startSounds();
+            });
+
+            controls.addEventListener('unlock', function () {
+                blocker.style.display = 'block';
+                instructions.style.display = '';
+                crosshair.style.display = 'none';
+                stopSounds();
+            });
+
+            scene.add(controls.getObject());
+            
+            // キーボードイベント
+            const onKeyDown = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = true;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = true;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = true;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = true;
+                        break;
+                }
+            };
+
+            const onKeyUp = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = false;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = false;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = false;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = false;
+                        break;
+                }
+            };
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            // マウスクリックイベント (インタラクション)
+            document.addEventListener('click', onMouseClick);
+            
+            // レイキャスター (インタラクション用)
+            raycaster = new THREE.Raycaster();
+
+            // --- ワールド生成 ---
+            createWorld();
+            
+            // --- サウンド初期化 ---
+            initSounds();
+
+            // ウィンドウリサイズ対応
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // --- ワールド（マップ）を作成 ---
+        function createWorld() {
+            // テクスチャ
+            const textureLoader = new THREE.TextureLoader();
+            const floorTexture = textureLoader.load('https://threejs.org/examples/textures/hardwood2_diffuse.jpg');
+            floorTexture.wrapS = THREE.RepeatWrapping;
+            floorTexture.wrapT = THREE.RepeatWrapping;
+            floorTexture.repeat.set(4, 100);
+
+            const wallTexture = textureLoader.load('https://threejs.org/examples/textures/brick_diffuse.jpg');
+            wallTexture.wrapS = THREE.RepeatWrapping;
+            wallTexture.wrapT = THREE.RepeatWrapping;
+            wallTexture.repeat.set(100, 2);
+
+            // マテリアル
+            const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTexture, roughness: 0.8, metalness: 0.2 });
+            const wallMaterial = new THREE.MeshStandardMaterial({ map: wallTexture, roughness: 0.9, metalness: 0.1 });
+            const ceilingMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 1 });
+
+            // 一本の長い廊下を生成
+            const corridorWidth = 4;
+            const corridorLength = 200;
+
+            // 床
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(corridorWidth, corridorLength), floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // 天井
+            const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(corridorWidth, corridorLength), ceilingMaterial);
+            ceiling.position.y = 3;
+            ceiling.rotation.x = Math.PI / 2;
+            scene.add(ceiling);
+
+            // 壁
+            const wallGeometry = new THREE.BoxGeometry(corridorLength, 3, 0.2);
+            
+            const leftWall = new THREE.Mesh(wallGeometry, wallMaterial);
+            leftWall.position.set(-corridorWidth / 2, 1.5, 0);
+            leftWall.rotation.y = Math.PI / 2;
+            leftWall.castShadow = true;
+            leftWall.receiveShadow = true;
+            scene.add(leftWall);
+            objects.push(leftWall);
+
+            const rightWall = new THREE.Mesh(wallGeometry, wallMaterial);
+            rightWall.position.set(corridorWidth / 2, 1.5, 0);
+            rightWall.rotation.y = Math.PI / 2;
+            rightWall.castShadow = true;
+            rightWall.receiveShadow = true;
+            scene.add(rightWall);
+            objects.push(rightWall);
+
+            // --- インタラクティブなオブジェクト ---
+            // 鍵
+            const keyGeometry = new THREE.TorusGeometry(0.1, 0.04, 8, 24);
+            const keyMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 1.0, roughness: 0.2 });
+            keyObject = new THREE.Mesh(keyGeometry, keyMaterial);
+            keyObject.position.set(0, 1.2, 40);
+            keyObject.name = "key";
+            keyObject.castShadow = true;
+            scene.add(keyObject);
+            interactiveObjects.push(keyObject);
+
+            // 施錠されたドア
+            const doorGeometry = new THREE.BoxGeometry(1.5, 2.5, 0.1);
+            const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            lockedDoor = new THREE.Mesh(doorGeometry, doorMaterial);
+            lockedDoor.position.set(0, 1.25, -60);
+            lockedDoor.name = "locked_door";
+            lockedDoor.castShadow = true;
+            scene.add(lockedDoor);
+            objects.push(lockedDoor);
+            interactiveObjects.push(lockedDoor);
+
+            // ドアの後ろの壁
+            const endWallGeometry = new THREE.BoxGeometry(corridorWidth, 3, 0.2);
+            const endWall = new THREE.Mesh(endWallGeometry, wallMaterial);
+            endWall.position.set(0, 1.5, -60.1);
+            scene.add(endWall);
+            objects.push(endWall);
+
+            // 脱出トリガー
+            const escapeGeometry = new THREE.BoxGeometry(2, 3, 0.2);
+            const escapeMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
+            const escapeTrigger = new THREE.Mesh(escapeGeometry, escapeMaterial);
+            escapeTrigger.position.set(0, 1.5, -62);
+            escapeTrigger.name = "escape_trigger";
+            interactiveObjects.push(escapeTrigger);
+            scene.add(escapeTrigger);
+        }
+
+        // --- サウンド関連 ---
+        function initSounds() {
+            ambientSynth = new Tone.AMSynth({ harmonicity: 1.5, oscillator: { type: 'sine' }, envelope: { attack: 2, decay: 1, sustain: 0.5, release: 4 }, modulation: { type: 'square' }, modulationEnvelope: { attack: 2, decay: 0.1, sustain: 0.5, release: 0.1 } }).toDestination();
+            noise = new Tone.Noise("pink").start();
+            const autoFilter = new Tone.AutoFilter({ frequency: "8m", baseFrequency: 200, octaves: 3 }).toDestination();
+            noise.connect(autoFilter);
+            doorCreakSound = new Tone.NoiseSynth({ noise: { type: 'brown' }, envelope: { attack: 0.05, decay: 0.2, sustain: 0.1, release: 0.1 } }).toDestination();
+            whisperSynth = new Tone.MembraneSynth({ pitchDecay: 0.1, octaves: 2, envelope: { attack: 0.1, decay: 0.5, sustain: 0, release: 0.8 } }).toDestination();
+        }
+
+        function startSounds() {
+            ambientSynth.triggerAttack("C2");
+            setInterval(() => { if (controls.isLocked && Math.random() < 0.1) { whisperSynth.triggerAttackRelease("G1", "2n"); } }, 10000);
+        }
+
+        function stopSounds() {
+            ambientSynth.triggerRelease();
+        }
+
+        // --- イベントハンドラ ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseClick() {
+            if (!controls.isLocked) return;
+            raycaster.setFromCamera(new THREE.Vector2(), camera);
+            const intersects = raycaster.intersectObjects(interactiveObjects);
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (intersects[0].distance < 3) {
+                    switch (object.name) {
+                        case "key":
+                            hasKey = true;
+                            scene.remove(keyObject);
+                            showMessage("古い鍵を手に入れた。");
+                            break;
+                        case "locked_door":
+                            if (hasKey) {
+                                showMessage("鍵を使ってドアを開けた。");
+                                new Tone.PluckSynth().toDestination().triggerAttackRelease("C4", "8n");
+                                doorCreakSound.triggerAttackRelease("0.5n");
+                                scene.remove(lockedDoor);
+                                const index = objects.indexOf(lockedDoor);
+                                if (index > -1) { objects.splice(index, 1); }
+                            } else {
+                                showMessage("ドアには鍵がかかっている。");
+                                new Tone.PluckSynth().toDestination().triggerAttackRelease("C2", "8n");
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+
+        // --- メッセージ表示 ---
+        function showMessage(text) {
+            const messageBox = document.getElementById('messageBox');
+            messageBox.textContent = text;
+            messageBox.style.opacity = 1;
+            setTimeout(() => { messageBox.style.opacity = 0; }, 3000);
+        }
+
+        // --- アニメーションループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+
+            if (controls.isLocked === true && !gameEnded) {
+                const delta = (time - prevTime) / 1000;
+                const oldPosition = controls.getObject().position.clone();
+
+                // 速度の減衰
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+
+                // 入力方向
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                // ★修正点: 加速値を下げてスピードを遅くする (40.0 -> 25.0)
+                if (moveForward || moveBackward) velocity.z -= direction.z * 25.0 * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * 25.0 * delta;
+
+                // 移動
+                controls.moveRight(-velocity.x * delta);
+                controls.moveForward(-velocity.z * delta);
+
+                // ★追加: ヘッドボブ（頭の揺れ）効果
+                const playerPosition = controls.getObject().position;
+                const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+                if (isMoving && (Math.abs(velocity.x) > 0.01 || Math.abs(velocity.z) > 0.01)) {
+                    bobbingTimer += delta * 8; // 揺れの速さ
+                    playerPosition.y = defaultCameraY + Math.sin(bobbingTimer) * 0.04; // 揺れの大きさ
+                } else {
+                    // 動いていない場合はスムーズに元の高さに戻る
+                    if (Math.abs(playerPosition.y - defaultCameraY) > 0.01) {
+                        // THREE.MathUtils.lerp を使用するために three.min.js がグローバルスコープにあることを前提としています
+                        playerPosition.y += (defaultCameraY - playerPosition.y) * 4 * delta;
+                    } else {
+                        playerPosition.y = defaultCameraY;
+                    }
+                }
+
+                // 衝突判定
+                const playerCollider = new THREE.Sphere(playerPosition, 0.4);
+
+                for (let i = 0; i < objects.length; i++) {
+                    const wallCollider = new THREE.Box3().setFromObject(objects[i]);
+                    if (wallCollider.intersectsSphere(playerCollider)) {
+                        controls.getObject().position.copy(oldPosition);
+                        velocity.x = 0;
+                        velocity.z = 0;
+                        break;
+                    }
+                }
+
+                // 脱出判定
+                if (playerPosition.z < -61.5) {
+                    endGame();
+                }
+                
+                // ライトがプレイヤーを追従し、ちらつく
+                flickeringLight.position.copy(controls.getObject().position);
+                flickeringLight.position.y += 0.5; 
+                if (Math.random() > 0.95) {
+                    flickeringLight.intensity = 0.7 + Math.random() * 0.5;
+                }
+            }
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+
+        // --- ゲーム終了処理 ---
+        function endGame() {
+            gameEnded = true;
+            controls.unlock();
+            const blocker = document.getElementById('blocker');
+            const instructions = document.getElementById('instructions');
+            blocker.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+            instructions.innerHTML = `
+                <h1 style="color: #000;">あなたは脱出した</h1>
+                <p style="color: #333;">しかし、あの空間の記憶は永遠にあなたを苛むだろう。</p>
+                <p style="color: #555;">(リロードしてもう一度プレイ)</p>
+            `;
+            instructions.style.cursor = 'default';
+            stopSounds();
+            if(typeof Tone !== 'undefined' && Tone.Transport.state === "started") {
+                Tone.Transport.stop();
+            }
+        }
+    </script>
+</body>
+</html>

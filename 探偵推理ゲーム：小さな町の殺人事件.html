@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>探偵推理ゲーム：小さな町の殺人事件</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&display=swap');
+        body {
+            font-family: 'Noto Serif JP', serif;
+        }
+        .choice-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="bg-slate-800 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div id="game-container" class="w-full max-w-3xl bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border-4 border-slate-700">
+        <!-- 画像表示エリア -->
+        <div id="image-container" class="bg-slate-800 p-4 border-b-4 border-slate-700 flex justify-center items-center min-h-[250px] md:min-h-[300px]">
+            <!-- SVG画像がここに表示される -->
+        </div>
+
+        <div class="p-6 md:p-8">
+            <!-- テキスト表示エリア -->
+            <div id="text-container" class="mb-6 min-h-[100px] text-lg leading-relaxed">
+                <p>読み込み中...</p>
+            </div>
+
+            <!-- 選択肢エリア -->
+            <div id="choices-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- 選択肢ボタンがここに表示される -->
+            </div>
+        </div>
+        
+        <!-- 証拠品リストエリア -->
+        <div id="inventory-container" class="bg-slate-950 p-4 border-t-4 border-slate-700">
+            <h3 class="font-bold text-amber-400 mb-2 text-center text-sm tracking-widest">入手した証拠</h3>
+            <ul id="inventory-list" class="flex flex-wrap gap-x-4 gap-y-2 justify-center items-center text-slate-300">
+                <li id="no-evidence">まだ証拠はない...</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const imageContainer = document.getElementById('image-container');
+            const textContainer = document.getElementById('text-container');
+            const choicesContainer = document.getElementById('choices-container');
+            const inventoryList = document.getElementById('inventory-list');
+            const noEvidence = document.getElementById('no-evidence');
+
+            let inventory = new Set();
+
+            // SVG画像の定義
+            const images = {
+                crime_scene: `
+                    <svg viewBox="0 0 200 100" class="w-full h-auto max-h-64">
+                        <rect width="200" height="100" fill="#334155"/>
+                        <path d="M 80 70 C 70 50, 90 40, 100 45 S 130 55, 120 75 Z" fill="none" stroke="#f87171" stroke-width="1.5" stroke-dasharray="2 2"/>
+                        <circle cx="110" cy="55" r="3" fill="#ef4444"/>
+                        <text x="115" y="58" fill="#fde047" font-size="6">A</text>
+                        <rect x="40" y="60" width="15" height="8" fill="#94a3b8" transform="rotate(-15 40 60)"/>
+                        <text x="45" y="72" fill="#fde047" font-size="6">B</text>
+                        <circle cx="150" cy="80" r="4" fill="#64748b"/>
+                        <text x="155" y="83" fill="#fde047" font-size="6">C</text>
+                        <text x="10" y="15" fill="#e2e8f0" font-size="8" font-weight="bold">事件現場</text>
+                    </svg>`,
+                suspect_a: `
+                    <svg viewBox="0 0 100 100" class="w-48 h-48">
+                        <rect width="100" height="100" fill="#1e293b"/>
+                        <circle cx="50" cy="30" r="15" fill="#94a3b8"/>
+                        <path d="M 30 50 C 30 70, 70 70, 70 50 V 45 H 30 Z" fill="#94a3b8"/>
+                        <rect x="30" y="70" width="40" height="30" fill="#94a3b8"/>
+                        <text x="15" y="95" fill="#e2e8f0" font-size="8">容疑者A: 田中</text>
+                    </svg>`,
+                suspect_b: `
+                    <svg viewBox="0 0 100 100" class="w-48 h-48">
+                        <rect width="100" height="100" fill="#1e293b"/>
+                        <circle cx="50" cy="30" r="15" fill="#94a3b8"/>
+                        <path d="M 40 45 L 60 45 L 65 90 L 35 90 Z" fill="#94a3b8"/>
+                        <text x="15" y="95" fill="#e2e8f0" font-size="8">容疑者B: 鈴木</text>
+                    </svg>`,
+                evidence_knife: `
+                    <svg viewBox="0 0 100 100" class="w-48 h-48">
+                        <rect width="100" height="100" fill="#1e293b"/>
+                        <path d="M 30 50 L 70 10 L 75 15 L 35 55 Z" fill="#e2e8f0"/>
+                        <rect x="20" y="50" width="15" height="10" fill="#ca8a04"/>
+                        <circle cx="35" cy="55" r="2" fill="#ef4444"/>
+                        <text x="25" y="80" fill="#e2e8f0" font-size="8">証拠：血痕の付いたナイフ</text>
+                    </svg>`,
+                evidence_letter: `
+                    <svg viewBox="0 0 100 100" class="w-48 h-48">
+                        <rect width="100" height="100" fill="#1e293b"/>
+                        <rect x="20" y="20" width="60" height="40" fill="#f1f5f9"/>
+                        <line x1="25" y1="30" x2="75" y2="30" stroke="#64748b" stroke-width="2"/>
+                        <line x1="25" y1="40" x2="65" y2="40" stroke="#64748b" stroke-width="2"/>
+                        <line x1="25" y1="50" x2="70" y2="50" stroke="#ef4444" stroke-width="2"/>
+                        <text x="30" y="80" fill="#e2e8f0" font-size="8">証拠：脅迫状</text>
+                    </svg>`,
+                interrogation_room: `
+                    <svg viewBox="0 0 200 100" class="w-full h-auto max-h-64">
+                        <rect width="200" height="100" fill="#334155"/>
+                        <rect x="60" y="40" width="80" height="30" fill="#475569"/>
+                        <rect x="70" y="65" width="20" height="20" fill="#1e293b"/>
+                        <rect x="110" y="65" width="20" height="20" fill="#1e293b"/>
+                        <line x1="0" y1="90" x2="200" y2="90" stroke="#1e293b" stroke-width="5"/>
+                        <text x="10" y="15" fill="#e2e8f0" font-size="8" font-weight="bold">尋問室</text>
+                    </svg>`,
+                ending_success: `
+                    <svg viewBox="0 0 100 100" class="w-48 h-48">
+                        <rect width="100" height="100" fill="#15803d"/>
+                        <path d="M 20 50 L 45 75 L 80 30" fill="none" stroke="#fde047" stroke-width="8" stroke-linecap="round"/>
+                        <text x="15" y="90" fill="white" font-size="10">事件解決</text>
+                    </svg>`,
+                ending_fail: `
+                    <svg viewBox="0 0 100 100" class="w-48 h-48">
+                        <rect width="100" height="100" fill="#be123c"/>
+                        <line x1="20" y1="20" x2="80" y2="80" stroke="white" stroke-width="8" stroke-linecap="round"/>
+                        <line x1="80" y1="20" x2="20" y2="80" stroke="white" stroke-width="8" stroke-linecap="round"/>
+                        <text x="15" y="90" fill="white" font-size="10">犯人を取り逃がした</text>
+                    </svg>`
+            };
+            
+            // ストーリーデータ
+            const story = {
+                start: {
+                    text: "静かな港町で、資産家の山下氏が殺害された。あなたは担当刑事として、この事件の捜査を命じられた。まずはどこから調べる？",
+                    image: "crime_scene",
+                    choices: [
+                        { text: "事件現場を詳しく調べる", next: "scene_examine" },
+                        { text: "関係者への聞き込みを開始する", next: "scene_interrogate_start" }
+                    ]
+                },
+                scene_examine: {
+                    text: "現場は山下氏の書斎だ。荒らされた様子はないが、床に血痕と倒れたランプがある。机の上には何か手紙のようなものが見える。",
+                    image: "crime_scene",
+                    choices: [
+                        { text: "床の血痕を調べる", next: "scene_examine_blood" },
+                        { text: "机の手紙を調べる", next: "scene_examine_letter" }
+                    ]
+                },
+                scene_examine_blood: {
+                    text: "血痕のそばに、小さなフルーツナイフが落ちている。柄には拭き取られたような跡があるが、微かに血が付着しているようだ。重要な証拠になるかもしれない。",
+                    image: "evidence_knife",
+                    onEnter: () => addInventory("血の付いたナイフ"),
+                    choices: [
+                        { text: "机の手紙も調べる", next: "scene_examine_letter" },
+                        { text: "現場の調査を終える", next: "scene_interrogate_start" }
+                    ]
+                },
+                scene_examine_letter: {
+                    text: "机の上には、事業の失敗をなじる脅迫状が置かれていた。『お前のせいで全てを失った。必ず報いを受けさせる』と書かれている。差出人の名前はない。",
+                    image: "evidence_letter",
+                    onEnter: () => addInventory("脅迫状"),
+                    choices: [
+                        { text: "床の血痕も調べる", next: "scene_examine_blood" },
+                        { text: "現場の調査を終える", next: "scene_interrogate_start" }
+                    ]
+                },
+                scene_interrogate_start: {
+                    text: "捜査線上に2人の容疑者が浮かび上がった。被害者のビジネスパートナーである田中と、被害者に解雇された元秘書の鈴木だ。どちらから話を聞く？",
+                    image: "interrogation_room",
+                    choices: [
+                        { text: "ビジネスパートナーの田中を尋問する", next: "interrogate_tanaka_1" },
+                        { text: "元秘書の鈴木を尋問する", next: "interrogate_suzuki_1" }
+                    ]
+                },
+                interrogate_tanaka_1: {
+                    text: "田中は落ち着いた様子で尋問に応じた。「山下さんとは長年の付き合いでした。事業は順調でしたし、殺す動機なんてありませんよ」と彼は言う。",
+                    image: "suspect_a",
+                    choices: [
+                        { text: "（脅迫状を持っている場合）この手紙に見覚えは？", next: "interrogate_tanaka_2", condition: () => inventory.has("脅迫状") },
+                        { text: "事件当夜のアリバイを聞く", next: "interrogate_tanaka_3" },
+                        { text: "鈴木について尋ねる", next: "interrogate_tanaka_4" },
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_tanaka" }
+                    ]
+                },
+                 interrogate_tanaka_2: {
+                    text: "脅迫状を見せると、田中は顔をしかめた。「これは...ひどい。ですが、私の筆跡ではない。おそらく、彼に恨みを持つ誰かの仕業でしょう。例えば、解雇された鈴木さんとか...」",
+                    image: "suspect_a",
+                    onEnter: () => addInventory("田中は鈴木を疑っている"),
+                    choices: [
+                        { text: "事件当夜のアリバイを聞く", next: "interrogate_tanaka_3" },
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_tanaka" }
+                    ]
+                },
+                interrogate_tanaka_3: {
+                    text: "「事件があったとされる夜は、ずっと自宅で仕事をしていました。一人だったので証明はできませんが」と田中は答えた。完璧なアリバイはないようだ。",
+                    image: "suspect_a",
+                    onEnter: () => addInventory("田中のアリバイは不確か"),
+                    choices: [
+                        { text: "鈴木について尋ねる", next: "interrogate_tanaka_4" },
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_tanaka" }
+                    ]
+                },
+                interrogate_tanaka_4: {
+                    text: "「鈴木さんは優秀でしたが、会社の金を使い込んでいる疑惑があり、山下さんが解雇したんです。彼女は相当恨んでいたはずですよ」",
+                    image: "suspect_a",
+                    choices: [
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_tanaka" }
+                    ]
+                },
+                scene_interrogate_start_after_tanaka: {
+                    text: "田中の尋問を終えた。次はどうする？",
+                    image: "interrogation_room",
+                    choices: [
+                        { text: "元秘書の鈴木を尋問する", next: "interrogate_suzuki_1" },
+                        { text: "（証拠が揃っている場合）犯人を告発する", next: "final_accusation", condition: () => inventory.size >= 2 }
+                    ]
+                },
+                interrogate_suzuki_1: {
+                    text: "鈴木は神経質そうに目を泳がせている。「山下さんにはお世話になりましたが、不当に解雇されたんです！でも、殺したりなんてしていません！」",
+                    image: "suspect_b",
+                    choices: [
+                        { text: "（血の付いたナイフを持っている場合）このナイフに見覚えは？", next: "interrogate_suzuki_2", condition: () => inventory.has("血の付いたナイフ") },
+                        { text: "解雇された理由を聞く", next: "interrogate_suzuki_3" },
+                        { text: "田中について尋ねる", next: "interrogate_suzuki_4" },
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_suzuki" }
+                    ]
+                },
+                interrogate_suzuki_2: {
+                    text: "ナイフを見せると、鈴木は息を呑んだ。「そ、それは...私が会社の給湯室で使っていたものです...でも、なぜここに...？」彼女は明らかに動揺している。",
+                    image: "suspect_b",
+                    onEnter: () => addInventory("ナイフは鈴木のもの"),
+                    choices: [
+                        { text: "解雇された理由を聞く", next: "interrogate_suzuki_3" },
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_suzuki" }
+                    ]
+                },
+                interrogate_suzuki_3: {
+                    text: "「横領なんてしていません！あれは田中さんが仕組んだ罠です！彼が会社の金を動かして、私に罪をなすりつけたんです！」と鈴木は涙ながらに訴えた。",
+                    image: "suspect_b",
+                    onEnter: () => addInventory("鈴木は田中が犯人だと主張"),
+                    choices: [
+                        { text: "田中について尋ねる", next: "interrogate_suzuki_4" },
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_suzuki" }
+                    ]
+                },
+                 interrogate_suzuki_4: {
+                    text: "「田中さんは山下さんの事業を乗っ取ろうとしていました。山下さんも最近それに気づいて、彼を警戒していたんです」",
+                    image: "suspect_b",
+                    choices: [
+                        { text: "尋問を終える", next: "scene_interrogate_start_after_suzuki" }
+                    ]
+                },
+                scene_interrogate_start_after_suzuki: {
+                    text: "鈴木の尋問を終えた。次はどうする？",
+                    image: "interrogation_room",
+                    choices: [
+                        { text: "ビジネスパートナーの田中を尋問する", next: "interrogate_tanaka_1" },
+                        { text: "（証拠が揃っている場合）犯人を告発する", next: "final_accusation", condition: () => inventory.size >= 3 }
+                    ]
+                },
+                final_accusation: {
+                    text: "全ての調査が終わった。君が集めた証拠と証言から、犯人は特定できたか？さあ、告発の時だ。",
+                    image: "interrogation_room",
+                    choices: [
+                        { text: "犯人は田中だ！", next: "ending_tanaka" },
+                        { text: "犯人は鈴木だ！", next: "ending_suzuki" }
+                    ]
+                },
+                ending_tanaka: {
+                    text: "君が田中を突きつけると、彼は観念したように笑った。「そうだ。私がやった。事業を乗っ取ろうとしていることに山下が気づいたからだ。脅迫状で鈴木に罪をなすりつけ、彼女のナイフで...」見事な推理だ。事件は解決した。",
+                    image: "ending_success",
+                    isEnding: true,
+                    condition: () => inventory.has("脅迫状") && inventory.has("ナイフは鈴木のもの") && inventory.has("鈴木は田中が犯人だと主張"),
+                    fallback: "ending_fail_tanaka"
+                },
+                ending_suzuki: {
+                    text: "君が鈴木を犯人だと告発すると、彼女は泣き崩れた。「違う...私じゃない...」その後、真犯人である田中は海外へ高飛びし、事件は迷宮入りとなった。君の推理は間違っていた。",
+                    image: "ending_fail",
+                    isEnding: true
+                },
+                ending_fail_tanaka: {
+                    text: "君は田中を告発したが、決定的な証拠が足りなかった。「馬鹿なことを。証拠でもあるのかね？」彼は弁護士を呼び、君は担当を外された。真犯人は闇の中に消えた。",
+                    image: "ending_fail",
+                    isEnding: true
+                }
+            };
+
+            function startGame() {
+                showScene('start');
+            }
+
+            function showScene(sceneId) {
+                const scene = story[sceneId];
+                
+                // エンディングの分岐処理
+                if (scene.isEnding && scene.condition && !scene.condition()) {
+                    showScene(scene.fallback);
+                    return;
+                }
+
+                // UI更新
+                imageContainer.innerHTML = images[scene.image] || '';
+                textContainer.innerHTML = `<p>${scene.text}</p>`;
+                choicesContainer.innerHTML = '';
+
+                if (scene.onEnter) {
+                    scene.onEnter();
+                }
+
+                if (scene.isEnding) {
+                    const restartButton = document.createElement('button');
+                    restartButton.innerText = 'もう一度プレイする';
+                    restartButton.className = 'w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-3 px-4 rounded-lg transition-all duration-200 choice-button';
+                    restartButton.onclick = () => {
+                        inventory.clear();
+                        updateInventory();
+                        startGame();
+                    };
+                    choicesContainer.appendChild(restartButton);
+                } else {
+                    scene.choices.forEach(choice => {
+                        if (choice.condition === undefined || choice.condition()) {
+                            const button = document.createElement('button');
+                            button.innerText = choice.text;
+                            button.className = 'w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-4 rounded-lg transition-all duration-200 choice-button';
+                            button.onclick = () => showScene(choice.next);
+                            choicesContainer.appendChild(button);
+                        }
+                    });
+                }
+            }
+
+            function addInventory(item) {
+                inventory.add(item);
+                updateInventory();
+            }
+
+            function updateInventory() {
+                inventoryList.innerHTML = '';
+                if (inventory.size === 0) {
+                    inventoryList.appendChild(noEvidence);
+                } else {
+                    inventory.forEach(item => {
+                        const li = document.createElement('li');
+                        li.className = "bg-slate-800 px-3 py-1 rounded-full text-sm";
+                        li.innerText = `📄 ${item}`;
+                        inventoryList.appendChild(li);
+                    });
+                }
+            }
+
+            startGame();
+        });
+    </script>
+</body>
+</html>

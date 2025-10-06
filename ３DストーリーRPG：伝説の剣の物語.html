@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 3Dライブラリ three.js を読み込む -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');
+        body {
+            font-family: 'DotGothic16', sans-serif;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            overflow: hidden; /* ページ全体のスクロールを禁止 */
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        canvas {
+            display: block;
+        }
+        #ui-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none; /* UIが3D操作の邪魔をしないように */
+        }
+        .ui-panel {
+            background-color: rgba(0, 0, 0, 0.75);
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 1rem;
+            pointer-events: auto; /* パネル自体はクリックできるように */
+        }
+        #message-box {
+            height: 120px;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        #choices-box button {
+            transition: all 0.3s ease;
+        }
+        #choices-box button:hover {
+            background-color: #00aaaa;
+            transform: translateY(-2px);
+        }
+        #status-box {
+            display: flex;
+            justify-content: space-between;
+        }
+        #controls-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="canvas-container"></div>
+        
+        <div id="controls-info">
+            <p>移動: 矢印キー / WASD</p>
+            <p>インタラクト: Enterキー</p>
+            <p>視点切替: Eキー</p>
+        </div>
+
+        <div id="ui-container">
+             <!-- ステータス表示エリア -->
+            <div class="ui-panel">
+                <h3 class="text-lg font-bold mb-2 text-cyan-300">ステータス</h3>
+                <div id="status-box" class="grid grid-cols-2 gap-4">
+                    <div><strong>HP:</strong> <span id="player-hp">100</span></div>
+                    <div><strong>装備:</strong> <span id="player-weapon">なし</span></div>
+                    <div><strong>持ち物:</strong> <span id="player-inventory"></span></div>
+                </div>
+            </div>
+            <!-- メッセージと選択肢エリア -->
+            <div class="ui-panel">
+                <div id="message-box">
+                    <p>物語が始まる。村を探索し、人々と話そう。</p>
+                </div>
+                <div id="choices-box" class="flex gap-4 justify-center"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x333333);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const canvasContainer = document.getElementById('canvas-container');
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        canvasContainer.appendChild(renderer.domElement);
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 20, 5);
+        scene.add(directionalLight);
+
+        // --- DOM Elements ---
+        const messageBox = document.getElementById('message-box');
+        const choicesBox = document.getElementById('choices-box');
+        const playerHpEl = document.getElementById('player-hp');
+        const playerWeaponEl = document.getElementById('player-weapon');
+        const playerInventoryEl = document.getElementById('player-inventory');
+
+        // --- Game Settings ---
+        const TILE_SIZE = 5;
+        const PLAYER_SPEED = 0.15;
+        const INTERACTION_DISTANCE = TILE_SIZE * 1.2;
+
+        // --- Map Data ---
+        // 0:道, 1:壁, 2:アルド, 3:宝箱, 4:スライム, 5:森へのワープ, 6:エリ, 7:森の守護者, 8:祭壇, 9:影の使者
+        const mapData = {
+            village: {
+                map: [
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 6, 0, 1],
+                    [1, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 3, 0, 1],
+                    [1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+                    [1, 0, 0, 0, 0, 0, 0, 0, 1, 5, 5, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+                    [1, 1, 1, 0, 1, 1, 0, 0, 1, 5, 5, 1, 0, 0, 1, 1, 1, 0, 1, 1],
+                    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 1],
+                    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                ],
+                startPos: { x: 1.5, z: 1.5 }
+            },
+            forest: {
+                map: [
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 7, 0, 0, 0, 1],
+                    [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                    [1, 0, 1, 0, 0, 0, 1, 8, 9, 8, 1, 0, 0, 0, 1],
+                    [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+                    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1],
+                    [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 5, 5, 5, 1, 1, 1, 1, 1],
+                ],
+                startPos: { x: 7.5, z: 7.5 }
+            }
+        };
+        let currentMap = 'village';
+
+        // --- Player Data ---
+        const player = {
+            hp: 100,
+            weapon: "なし",
+            inventory: [],
+            choices: {
+                questAccepted: false,
+                motive: null, // 'power' or 'heart'
+            }
+        };
+        
+        // --- Model Creation Functions ---
+        function createPlayerModel() {
+            const model = new THREE.Group();
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0x00aaff });
+            
+            const bodyGeo = new THREE.CylinderGeometry(TILE_SIZE * 0.25, TILE_SIZE * 0.25, TILE_SIZE * 0.6, 16);
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = TILE_SIZE * 0.3;
+            model.add(body);
+
+            const headGeo = new THREE.SphereGeometry(TILE_SIZE * 0.2, 16, 16);
+            const head = new THREE.Mesh(headGeo, bodyMat);
+            head.position.y = TILE_SIZE * 0.75;
+            head.name = "playerHead"; // カメラ位置特定の目印
+            model.add(head);
+            
+            return model;
+        }
+
+        function createNpcModel() {
+            const model = new THREE.Group();
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const bodyGeo = new THREE.BoxGeometry(TILE_SIZE * 0.6, TILE_SIZE * 0.8, TILE_SIZE * 0.4);
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = TILE_SIZE * 0.4;
+            model.add(body);
+            const headMat = new THREE.MeshLambertMaterial({ color: 0xffcc00 });
+            const headGeo = new THREE.BoxGeometry(TILE_SIZE * 0.4, TILE_SIZE * 0.4, TILE_SIZE * 0.4);
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = TILE_SIZE * 0.9;
+            model.add(head);
+            return model;
+        }
+
+        function createSlimeModel() {
+            const mat = new THREE.MeshLambertMaterial({ color: 0xff4444 });
+            const geo = new THREE.SphereGeometry(TILE_SIZE * 0.4, 16, 16);
+            const model = new THREE.Mesh(geo, mat);
+            model.scale.y = 0.6;
+            model.position.y = TILE_SIZE * 0.4 * 0.6;
+            return model;
+        }
+        
+        function createEliModel() {
+            const model = createNpcModel();
+            model.scale.set(0.8, 0.8, 0.8);
+            model.children[0].material.color.set(0xff80ab); // Body to pink
+            return model;
+        }
+
+        function createGuardianModel() {
+            const model = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+            const bodyGeo = new THREE.BoxGeometry(TILE_SIZE * 1.2, TILE_SIZE * 0.5, TILE_SIZE * 0.6);
+            const body = new THREE.Mesh(bodyGeo, mat);
+            body.position.y = TILE_SIZE * 0.4;
+            model.add(body);
+            const headGeo = new THREE.BoxGeometry(TILE_SIZE * 0.4, TILE_SIZE * 0.4, TILE_SIZE * 0.5);
+            const head = new THREE.Mesh(headGeo, mat);
+            head.position.set(TILE_SIZE * 0.7, TILE_SIZE * 0.6, 0);
+            model.add(head);
+            return model;
+        }
+
+        function createEnemyModel() {
+            const model = createNpcModel();
+            model.children[0].material.color.set(0x333333); // Body to black
+            model.children[1].material.color.set(0xaa0000); // Head to red
+            return model;
+        }
+
+        const playerMesh = createPlayerModel();
+        scene.add(playerMesh);
+
+        // --- Game State ---
+        let gameInProgress = true;
+        const keys = {};
+        let worldObjects = [];
+        let interactiveObjects = [];
+        let cameraMode = 'thirdPerson';
+
+        // --- Generate 3D World from Map Data ---
+        function createWorld(mapName) {
+            // Clear previous map objects
+            worldObjects.forEach(obj => scene.remove(obj));
+            interactiveObjects.forEach(obj => scene.remove(obj.mesh));
+            if (scene.getObjectByName("floor")) scene.remove(scene.getObjectByName("floor"));
+            
+            worldObjects = [];
+            interactiveObjects = [];
+
+            const mapConfig = mapData[mapName];
+            const currentMapLayout = mapConfig.map;
+
+            const floorGeo = new THREE.PlaneGeometry(currentMapLayout[0].length * TILE_SIZE, currentMapLayout.length * TILE_SIZE);
+            const floorMat = new THREE.MeshLambertMaterial({ color: mapName === 'forest' ? 0x224422 : 0x444444 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.name = "floor";
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set((currentMapLayout[0].length / 2) * TILE_SIZE, 0, (currentMapLayout.length / 2) * TILE_SIZE);
+            scene.add(floor);
+
+            for (let y = 0; y < currentMapLayout.length; y++) {
+                for (let x = 0; x < currentMapLayout[0].length; x++) {
+                    const tile = currentMapLayout[y][x];
+                    if (tile === 0) continue;
+
+                    let objectMesh;
+                    const xPos = x * TILE_SIZE + TILE_SIZE / 2;
+                    const zPos = y * TILE_SIZE + TILE_SIZE / 2;
+                    
+                    let interactiveData = null;
+
+                    switch (tile) {
+                        case 1:
+                            const wallGeo = new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                            const wallMat = new THREE.MeshLambertMaterial({ color: mapName === 'forest' ? 0x556B2F : 0x888888 });
+                            objectMesh = new THREE.Mesh(wallGeo, wallMat);
+                            objectMesh.position.y = TILE_SIZE / 2;
+                            break;
+                        case 2: objectMesh = createNpcModel(); interactiveData = { type: 'npc', id: 'aldo' }; break;
+                        case 3: 
+                             const treasureGeo = new THREE.BoxGeometry(TILE_SIZE * 0.6, TILE_SIZE * 0.6, TILE_SIZE * 0.6);
+                             const treasureMat = new THREE.MeshLambertMaterial({ color: 0xd4af37 });
+                             objectMesh = new THREE.Mesh(treasureGeo, treasureMat);
+                             objectMesh.position.y = TILE_SIZE * 0.3;
+                             interactiveData = { type: 'treasure', id: 'village_chest', content: '木の剣', opened: false };
+                             break;
+                        case 4: objectMesh = createSlimeModel(); interactiveData = { type: 'monster', name: 'スライム', hp: 30, attack: 5, id: 'slime1' }; break;
+                        case 5: interactiveData = { type: 'warp', destination: mapName === 'village' ? 'forest' : 'village' }; break;
+                        case 6: objectMesh = createEliModel(); interactiveData = { type: 'npc', id: 'eli' }; break;
+                        case 7: objectMesh = createGuardianModel(); interactiveData = { type: 'npc', id: 'rufus' }; break;
+                        case 8: 
+                             const altarGeo = new THREE.BoxGeometry(TILE_SIZE * 0.8, TILE_SIZE * 0.2, TILE_SIZE * 0.8);
+                             const altarMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
+                             objectMesh = new THREE.Mesh(altarGeo, altarMat);
+                             objectMesh.position.y = TILE_SIZE * 0.1;
+                             interactiveData = { type: 'altar' }; 
+                             break;
+                        case 9: objectMesh = createEnemyModel(); interactiveData = { type: 'monster', name: '影の使者', hp: 150, attack: 20, id: 'boss' }; break;
+                    }
+                    
+                    if(tile === 5) { // ワープタイルは平らに
+                        const warpGeo = new THREE.BoxGeometry(TILE_SIZE, TILE_SIZE * 0.1, TILE_SIZE);
+                        const warpMat = new THREE.MeshLambertMaterial({ color: mapName === 'village' ? 0x228b22 : 0x8B4513 });
+                        objectMesh = new THREE.Mesh(warpGeo, warpMat);
+                        objectMesh.position.y = TILE_SIZE * 0.05;
+                    }
+                    
+                    if (objectMesh) {
+                        objectMesh.position.x = xPos;
+                        objectMesh.position.z = zPos;
+                        scene.add(objectMesh);
+
+                        if (tile === 1) worldObjects.push(objectMesh);
+                        if (interactiveData) {
+                            interactiveData.mesh = objectMesh;
+                            interactiveObjects.push(interactiveData);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // --- Dialogues ---
+        const dialogues = {
+            'aldo': {
+                initial: { text: "昔、この森に光る剣が眠っておった。だが、その剣を手にする者は己の心を試されるという……。", choices: [{ text: "詳しく聞く", action: () => { player.choices.questAccepted = true; showMessage("アルド: 剣は森の守護者に守られておる。心して向かうがよい。"); } }] },
+                questAccepted: { text: "アルド: 準備はできたか？気をつけてな。", choices: [] },
+            },
+            'eli': {
+                initial: { text: "森に行くの？危ないから気をつけてね。これ、お守り代わりにあげる！", action: () => { if(!player.inventory.includes('小さな鍵')) player.inventory.push('小さな鍵'); updateUI(); showMessage("エリから「小さな鍵」をもらった！"); } },
+                given: { text: "エリ: 無事で帰ってきてね！", choices: [] }
+            },
+            'rufus': {
+                initial: { text: "よく来たな、人の子よ。何を以て剣を求めるのか？", choices: [
+                    { text: "仲間を守る力のため", action: () => { player.choices.motive = 'heart'; showMessage("ルーファ: よかろう。その心、試させてもらうぞ。祭壇へ進むがよい。"); }},
+                    { text: "最強という欲望のため", action: () => { player.choices.motive = 'power'; showMessage("ルーファ: フン、欲望か。その器、試させてもらうぞ。祭壇へ進むがよい。"); }}
+                ]},
+                trial_done: { text: "ルーファ: お前の選択が世界を定めるだろう。", choices: [] }
+            }
+        };
+
+        // --- UI & Interaction Logic ---
+        function updateUI() {
+            playerHpEl.textContent = player.hp;
+            playerWeaponEl.textContent = player.weapon;
+            playerInventoryEl.textContent = player.inventory.join(', ') || 'なし';
+        }
+
+        function showMessage(text, choices = []) {
+            messageBox.innerHTML = `<p>${text}</p>`;
+            choicesBox.innerHTML = '';
+            if (choices.length > 0) {
+                choices.forEach(choice => {
+                    const button = document.createElement('button');
+                    button.textContent = choice.text;
+                    button.className = 'bg-cyan-600 text-white py-2 px-4 rounded-lg shadow-md';
+                    button.onclick = () => { choice.action(); choicesBox.innerHTML = ''; };
+                    choicesBox.appendChild(button);
+                });
+            }
+        }
+
+        function handleInteraction() {
+            if (!gameInProgress) return;
+            let closestObject = null;
+            let minDistance = INTERACTION_DISTANCE;
+            interactiveObjects.forEach(obj => {
+                if (!obj.mesh.parent) return;
+                const distance = playerMesh.position.distanceTo(obj.mesh.position);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestObject = obj;
+                }
+            });
+
+            if (!closestObject) { showMessage("周りには何もない。"); return; }
+
+            switch (closestObject.type) {
+                case 'npc': handleNpcInteraction(closestObject.id); break;
+                case 'monster': startCombat(closestObject); break;
+                case 'treasure': handleTreasureInteraction(closestObject); break;
+                case 'warp':
+                    if (player.choices.questAccepted) {
+                        currentMap = closestObject.destination;
+                        const startPos = mapData[currentMap].startPos;
+                        playerMesh.position.set(startPos.x * TILE_SIZE, 0, startPos.z * TILE_SIZE);
+                        createWorld(currentMap);
+                        showMessage(currentMap === 'forest' ? "不気味な森に入った..." : "村に戻ってきた。");
+                    } else {
+                        showMessage("アルドから話を聞いていないと、森には入れないようだ。");
+                    }
+                    break;
+                case 'altar':
+                    if (player.choices.motive) {
+                        if (player.weapon !== 'ルミナス') {
+                            player.weapon = 'ルミナス';
+                            updateUI();
+                            showMessage("伝説の剣「ルミナス」を手に入れた！その瞬間、背後に邪悪な気配が立ち込める！");
+                        } else {
+                            showMessage("祭壇は静まり返っている。");
+                        }
+                    } else {
+                        showMessage("守護者の試練を受けていない者は、剣に触れることができない。");
+                    }
+                    break;
+            }
+        }
+        
+        // --- Event Handlers ---
+        function handleNpcInteraction(npcId) { 
+            const npcDialogues = dialogues[npcId];
+            if (!npcDialogues) return;
+            let dialogue;
+            if (npcId === 'aldo') dialogue = player.choices.questAccepted ? npcDialogues.questAccepted : npcDialogues.initial;
+            else if (npcId === 'eli') dialogue = player.inventory.includes('小さな鍵') ? npcDialogues.given : npcDialogues.initial;
+            else if (npcId === 'rufus') dialogue = player.choices.motive ? npcDialogues.trial_done : npcDialogues.initial;
+            
+            if (dialogue.action) dialogue.action();
+            showMessage(dialogue.text, dialogue.choices);
+        }
+        
+        function handleTreasureInteraction(treasure) {
+            if (treasure.opened) {
+                showMessage("この宝箱はもう空っぽだ。");
+                return;
+            }
+            treasure.opened = true;
+            player.weapon = treasure.content;
+            showMessage(`宝箱を開けた！『${treasure.content}』を手に入れた！`);
+            updateUI();
+        }
+
+        function startCombat(monster) { 
+            gameInProgress = false;
+            showMessage(`${monster.name}が現れた！`, [
+                { text: "戦う", action: () => fight(monster) },
+                { text: "逃げる", action: () => flee(monster) }
+            ]);
+        }
+
+        function fight(monster) {
+            let combatLog = `${monster.name}との戦闘開始！<br>`;
+            let playerBaseAttack = 5;
+            if (player.weapon === '木の剣') playerBaseAttack = 10;
+            if (player.weapon === 'ルミナス') playerBaseAttack = 50;
+
+            while (player.hp > 0 && monster.hp > 0) {
+                let playerAttack = playerBaseAttack + Math.floor(Math.random() * 5);
+                monster.hp -= playerAttack;
+                combatLog += `プレイヤーの攻撃！ ${monster.name}に ${playerAttack} のダメージ！<br>`;
+                if (monster.hp <= 0) break;
+                let monsterAttack = monster.attack + Math.floor(Math.random() * 3);
+                player.hp -= monsterAttack;
+                combatLog += `${monster.name}の攻撃！ プレイヤーに ${monsterAttack} のダメージ！<br>`;
+            }
+            if (player.hp <= 0) {
+                combatLog += "プレイヤーは倒れてしまった... GAME OVER";
+                showMessage(combatLog);
+                gameInProgress = false;
+            } else {
+                combatLog += `${monster.name}を倒した！`;
+                showMessage(combatLog);
+                scene.remove(monster.mesh);
+                gameInProgress = true;
+                
+                if (monster.id === 'boss') {
+                    showEnding();
+                }
+            }
+            updateUI();
+        }
+        
+        function flee(monster) {
+            showMessage(`${monster.name}からなんとか逃げ切った...`);
+            gameInProgress = true;
+        }
+        
+        function showEnding() {
+            gameInProgress = false;
+            let endingText = "";
+            if (player.choices.motive === 'heart') {
+                endingText = "【エンディング A: 英雄の帰還】<br>影の使者を打ち破り、君は村へと凱旋した。エリやアルド、村人たちは君を英雄として迎え、村には平和が戻った。伝説の剣ルミナスは、君という善き主を得て、静かに輝きを放っている。君の冒険は伝説となり、永く語り継がれるだろう。- FIN -";
+            } else {
+                endingText = "【エンディング D: 堕ちた英雄】<br>影の使者を倒した君の心は、ルミナスの強大な力に魅了されていた。村に戻った君を人々は恐れ、称賛の声はなかった。力を求めすぎた英雄は、孤独な支配者となった。その手に残ったのは、冷たい剣の感触だけだった。- FIN -";
+            }
+            showMessage(endingText);
+        }
+
+        // --- Player Movement & Camera & Listeners ---
+        function movePlayer() {
+            if (!gameInProgress) return;
+
+            const velocity = new THREE.Vector3();
+            if (keys['arrowup'] || keys['w']) velocity.z -= 1;
+            if (keys['arrowdown'] || keys['s']) velocity.z += 1;
+            if (keys['arrowleft'] || keys['a']) velocity.x -= 1;
+            if (keys['arrowright'] || keys['d']) velocity.x += 1;
+
+            if (velocity.length() > 0) {
+                const targetAngle = Math.atan2(velocity.x, velocity.z);
+                playerMesh.rotation.y += (targetAngle - playerMesh.rotation.y) * 0.1;
+
+                velocity.normalize().multiplyScalar(PLAYER_SPEED);
+                
+                const oldPosition = playerMesh.position.clone();
+                const newPosition = playerMesh.position.clone().add(velocity);
+
+                playerMesh.position.x = newPosition.x;
+                if (checkCollision()) playerMesh.position.x = oldPosition.x;
+                
+                playerMesh.position.z = newPosition.z;
+                if (checkCollision()) playerMesh.position.z = oldPosition.z;
+            }
+        }
+
+        function checkCollision() {
+            const playerBox = new THREE.Box3().setFromObject(playerMesh);
+            for (const wall of worldObjects) {
+                const wallBox = new THREE.Box3().setFromObject(wall);
+                if (playerBox.intersectsBox(wallBox)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            movePlayer();
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+        
+        function updateCamera() {
+            if (cameraMode === 'thirdPerson') {
+                playerMesh.visible = true;
+                const cameraOffset = new THREE.Vector3(0, 15, 12);
+                camera.position.copy(playerMesh.position).add(cameraOffset);
+                camera.lookAt(playerMesh.position);
+            } else { // firstPerson
+                playerMesh.visible = false;
+                const head = playerMesh.getObjectByName("playerHead");
+                if (head) {
+                    const headPosition = new THREE.Vector3();
+                    head.getWorldPosition(headPosition);
+                    camera.position.copy(headPosition);
+
+                    const lookAtPoint = new THREE.Vector3(0, 0, -1);
+                    lookAtPoint.applyQuaternion(playerMesh.quaternion);
+                    lookAtPoint.add(camera.position);
+                    camera.lookAt(lookAtPoint);
+                }
+            }
+        }
+
+        window.addEventListener('keydown', (e) => { 
+            keys[e.key.toLowerCase()] = true;
+            if (e.key === 'Enter') handleInteraction();
+            if (e.key.toLowerCase() === 'e') {
+                cameraMode = (cameraMode === 'thirdPerson') ? 'firstPerson' : 'thirdPerson';
+            }
+        });
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- Initialize ---
+        function init() {
+            const startPos = mapData[currentMap].startPos;
+            playerMesh.position.set(startPos.x * TILE_SIZE, 0, startPos.z * TILE_SIZE);
+            createWorld(currentMap);
+            updateUI();
+            animate();
+        }
+
+        init();
+    </script>
+</body>
+</html>
