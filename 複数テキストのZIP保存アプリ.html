@@ -1,0 +1,127 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>複数テキストのZIP保存アプリ.html</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #f9f9f9;
+      max-width: 600px;
+      margin: auto;
+    }
+    .file-entry {
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 8px;
+      background: white;
+    }
+    input, textarea {
+      width: 100%;
+      font-size: 16px;
+      padding: 8px;
+      margin-top: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    textarea {
+      height: 100px;
+      resize: none;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #addFileBtn {
+      background-color: #2196F3;
+      margin-bottom: 20px;
+    }
+    #addFileBtn:hover {
+      background-color: #0b7dda;
+    }
+  </style>
+</head>
+<body>
+  <h2>複数のテキストファイルをZIPで保存する</h2>
+
+  <div id="filesContainer">
+    <div class="file-entry">
+      <label>ファイル名（例：memo.txt）</label>
+      <input type="text" class="fileName" placeholder="ファイル名を入力" />
+      <label>テキスト内容</label>
+      <textarea class="fileContent" placeholder="ここにテキストを入力"></textarea>
+    </div>
+  </div>
+
+  <button id="addFileBtn">ファイルを追加する</button>
+  <button id="saveZipBtn">ZIPで保存する</button>
+
+  <!-- JSZip CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+
+  <script>
+    const filesContainer = document.getElementById('filesContainer');
+    const addFileBtn = document.getElementById('addFileBtn');
+    const saveZipBtn = document.getElementById('saveZipBtn');
+
+    // ファイル追加ボタン
+    addFileBtn.addEventListener('click', () => {
+      const div = document.createElement('div');
+      div.className = 'file-entry';
+      div.innerHTML = `
+        <label>ファイル名（例：memo.txt）</label>
+        <input type="text" class="fileName" placeholder="ファイル名を入力" />
+        <label>テキスト内容</label>
+        <textarea class="fileContent" placeholder="ここにテキストを入力"></textarea>
+      `;
+      filesContainer.appendChild(div);
+    });
+
+    // ZIP保存処理
+    saveZipBtn.addEventListener('click', () => {
+      const zip = new JSZip();
+
+      const fileEntries = document.querySelectorAll('.file-entry');
+      let hasError = false;
+
+      fileEntries.forEach((entry, i) => {
+        const fileName = entry.querySelector('.fileName').value.trim();
+        const content = entry.querySelector('.fileContent').value;
+
+        if (!fileName) {
+          alert(`ファイル名が入力されていないファイルがあります（${i + 1}番目）`);
+          hasError = true;
+          return;
+        }
+
+        // 拡張子がなければ.txtをつける
+        const finalName = fileName.includes('.') ? fileName : fileName + '.txt';
+        zip.file(finalName, content);
+      });
+
+      if (hasError) return;
+
+      zip.generateAsync({ type: 'blob' }).then((content) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(content);
+        a.download = 'texts.zip';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    });
+  </script>
+</body>
+</html>
