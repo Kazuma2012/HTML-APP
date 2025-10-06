@@ -1,0 +1,188 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ロシアンルーレット</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: sans-serif;
+      background-color: #f8f8f8;
+    }
+    #gunImage {
+      cursor: pointer;
+      transition: transform 0.5s ease;
+      margin: 20px;
+      width: 600px;
+      max-width: 90vw;
+      height: auto;
+    }
+    .reversed {
+      transform: scaleX(-1);
+    }
+    #result {
+      font-size: 2.5em;
+      margin-top: 20px;
+      color: red;
+      font-weight: bold;
+      animation: fadeIn 1s ease;
+    }
+    #settings {
+      margin: 20px;
+    }
+    #remaining {
+      font-size: 1.2em;
+      margin-top: 10px;
+      color: #333;
+    }
+    @media (max-width: 600px) {
+      #result {
+        font-size: 1.8em;
+      }
+      #remaining {
+        font-size: 1em;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="settings">
+    <label>弾の数（1〜6発）:
+      <input type="number" id="bulletCount" value="1" min="1" max="6">
+    </label>
+    <br>
+    <label><input type="checkbox" id="vsComputer"> コンピュータと対戦する</label>
+    <br>
+    <button id="startBtn" onclick="setupGame()">ゲームスタート</button>
+    <button id="restartBtn" onclick="restartGame()" style="display: none;">リスタート</button>
+    <div id="remaining">残りの弾: 0発</div>
+  </div>
+
+  <img id="gunImage" src="https://tse2.mm.bing.net/th/id/OIP.TIJ7raWcZuuk7mnu9ZeeVQHaE0?pid=ImgDet&w=170&h=110&c=7&o=7&rm=3" onclick="fireGun()">
+  <div id="result">プレイヤー1の番です</div>
+
+  <!-- 🎵 効果音 -->
+  <audio id="soundBang" src="bang.mp3"></audio>
+  <audio id="soundClick" src="click.mp3"></audio>
+
+  <script>
+    let chamber = [];
+    let currentPlayer = 1;
+    let currentPosition = 0;
+    let totalBullets = 1;
+    let isWaiting = false;
+    let isComputerMode = false;
+    let gameOver = false;
+
+    function getPlayerName(playerNumber) {
+      return isComputerMode && playerNumber === 2 ? 'Bot' : `プレイヤー${playerNumber}`;
+    }
+
+    function updateRemainingBullets() {
+      const remaining = chamber.slice(currentPosition).filter(b => b).length;
+      document.getElementById('remaining').textContent = `残りの弾: ${remaining}発（全6発中）`;
+    }
+
+    function setupGame() {
+      totalBullets = parseInt(document.getElementById('bulletCount').value);
+      if (isNaN(totalBullets) || totalBullets < 1 || totalBullets > 6) {
+        alert('弾の数は1〜6にしてね！');
+        return;
+      }
+
+      chamber = Array(6).fill(false);
+      let indexes = [0, 1, 2, 3, 4, 5];
+      for (let i = 0; i < totalBullets; i++) {
+        const rand = Math.floor(Math.random() * indexes.length);
+        chamber[indexes[rand]] = true;
+        indexes.splice(rand, 1);
+      }
+
+      currentPlayer = 1;
+      currentPosition = 0;
+      isWaiting = false;
+      gameOver = false;
+      isComputerMode = document.getElementById('vsComputer').checked;
+
+      document.getElementById('result').textContent = `${getPlayerName(currentPlayer)}の番です`;
+      document.getElementById('gunImage').classList.remove('reversed');
+      updateRemainingBullets();
+
+      document.getElementById('startBtn').style.display = 'none';
+      document.getElementById('restartBtn').style.display = 'inline-block';
+    }
+
+    function restartGame() {
+      setupGame();
+    }
+
+    // 🎵 音を再生する関数
+    function playSound(id) {
+      const sound = document.getElementById(id);
+      sound.currentTime = 0;
+      sound.play();
+    }
+
+    function fireGun() {
+      if (!Array.isArray(chamber) || chamber.length !== 6 || isWaiting || gameOver) return;
+
+      const gun = document.getElementById('gunImage');
+      gun.classList.remove('shake', 'flash', 'bounce');
+
+      isWaiting = true;
+
+      let result = '';
+      if (chamber[currentPosition]) {
+        playSound('soundBang'); // 🔫バン！
+        result = `バン！ ${getPlayerName(currentPlayer)}が撃たれた！ ゲームオーバー`;
+        document.getElementById('result').textContent = result;
+        gun.classList.add('flash');
+        gameOver = true;
+        document.getElementById('startBtn').style.display = 'inline-block';
+        document.getElementById('restartBtn').style.display = 'none';
+        updateRemainingBullets();
+        return;
+      } else {
+        playSound('soundClick'); // 🔘カチッ
+        result = `カチッ... セーフ！ ${getPlayerName(currentPlayer)}`;
+        document.getElementById('result').textContent = result;
+        gun.classList.add('bounce');
+      }
+
+      gun.classList.add('shake');
+
+      setTimeout(() => {
+        currentPosition++;
+        updateRemainingBullets();
+
+        if (currentPosition >= 6) {
+          document.getElementById('result').textContent = '6回撃ちました。ゲーム終了！';
+          gameOver = true;
+          document.getElementById('startBtn').style.display = 'inline-block';
+          document.getElementById('restartBtn').style.display = 'none';
+          return;
+        }
+
+        switchPlayer();
+        isWaiting = false;
+
+        if (isComputerMode && currentPlayer === 2) {
+          setTimeout(() => {
+            fireGun();
+          }, 2000);
+        }
+      }, 1500);
+    }
+
+    function switchPlayer() {
+      const gun = document.getElementById('gunImage');
+      currentPlayer = currentPlayer === 1 ? 2 : 1;
+      gun.classList.toggle('reversed');
+      document.getElementById('result').textContent = `${getPlayerName(currentPlayer)}の番です`;
+    }
+  </script>
+
+</body>
+</html>
