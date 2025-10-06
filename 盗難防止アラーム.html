@@ -1,0 +1,204 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>盗難防止アラーム</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: black; color: white;
+      font-family: sans-serif;
+      height: 100%; overflow: hidden;
+    }
+    #container {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100vh;
+    }
+    #status {
+      font-size: 2rem; margin-bottom: 20px;
+    }
+    button {
+      font-size: 1.2rem; padding: 10px 20px;
+      border: none; border-radius: 5px;
+      background: lime; color: black;
+      cursor: pointer;
+    }
+    #alertOverlay {
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: red; z-index: 9999;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 50%, 100% { background: red; }
+      25%, 75% { background: black; }
+    }
+    #alertText {
+      font-size: 2.5rem; color: white;
+      user-select: none;
+    }
+    #passInput, #unlockBtn, #closeInputBtn {
+      margin-top: 20px;
+      font-size: 1.5rem;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      display: none;
+    }
+    #passInput {
+      background: white; color: black;
+    }
+    #unlockBtn {
+      background: gold; color: black;
+      cursor: pointer;
+    }
+    #closeInputBtn {
+      background: gray; color: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="status">🔌 待機中</div>
+    <button onclick="startMonitoring()">🟢 監視スタート</button>
+  </div>
+
+  <div id="alertOverlay">
+    <div id="alertText">🔴 アラーム作動中！</div>
+    <input type="password" id="passInput" placeholder="パスワードを入力（Enter）">
+    <button id="unlockBtn">🔓 解除</button>
+    <button id="closeInputBtn">❌ 閉じる</button>
+  </div>
+
+  <script>
+    let ctx = null, oscillator = null, gain = null, beepInterval = null;
+    const correctPassword = "1234";
+
+    function playAlarm() {
+      if (ctx) return;
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      oscillator = ctx.createOscillator();
+      gain = ctx.createGain();
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(1200, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start();
+
+      beepInterval = setInterval(() => {
+        if (!ctx || !gain) return;
+        const now = ctx.currentTime;
+        gain.gain.setValueAtTime(0.5, now);
+        setTimeout(() => {
+          if (ctx && gain) gain.gain.setValueAtTime(0, ctx.currentTime);
+        }, 500);
+      }, 1000);
+    }
+
+    function stopAlarm() {
+      clearInterval(beepInterval);
+      if (oscillator) oscillator.stop();
+      if (gain) gain.disconnect();
+      if (oscillator) oscillator.disconnect();
+      if (ctx) ctx.close();
+      ctx = null; oscillator = null; gain = null; beepInterval = null;
+
+      document.getElementById("alertOverlay").style.display = "none";
+      hidePasswordInput();
+      document.getElementById("status").textContent = "🟡 アラーム解除済み";
+      document.getElementById("status").style.color = "gold";
+    }
+
+    function hidePasswordInput() {
+      document.getElementById("passInput").style.display = "none";
+      document.getElementById("unlockBtn").style.display = "none";
+      document.getElementById("closeInputBtn").style.display = "none";
+    }
+
+    function startMonitoring() {
+      if (!navigator.getBattery) {
+        alert("Battery API未対応です");
+        return;
+      }
+      navigator.getBattery().then(battery => {
+        function checkCharging() {
+          if (!battery.charging) {
+            document.getElementById("status").textContent = "🔴 ケーブルが抜かれました";
+            document.getElementById("status").style.color = "red";
+            document.getElementById("alertOverlay").style.display = "flex";
+            playAlarm();
+          } else {
+            document.getElementById("status").textContent = "🔌 監視中（充電中）";
+            document.getElementById("status").style.color = "lime";
+            document.getElementById("alertOverlay").style.display = "flex";
+          }
+        }
+        checkCharging();
+        battery.addEventListener("chargingchange", checkCharging);
+      });
+    }
+
+    function showPasswordInput() {
+      const input = document.getElementById("passInput");
+      const btn = document.getElementById("unlockBtn");
+      const closeBtn = document.getElementById("closeInputBtn");
+      input.value = "";
+      input.style.display = "block";
+      btn.style.display = "block";
+      closeBtn.style.display = "block";
+      input.focus();
+    }
+
+    function tryUnlock() {
+      const input = document.getElementById("passInput");
+      const val = input.value;
+      input.value = "";
+      if (val === correctPassword) {
+        stopAlarm();
+        alert("✅ アラーム解除しました");
+      } else {
+        // 通知は出さず、音と入力欄をそのままに
+        input.focus();
+      }
+    }
+
+    // 入力欄を閉じる
+    document.getElementById("closeInputBtn").addEventListener("click", hidePasswordInput);
+
+    // ダブルタップ / ダブルクリック / スペースキー → 1秒に3回以内で解除入力を表示
+    let tapTimes = [];
+
+    function registerTap() {
+      const now = Date.now();
+      tapTimes.push(now);
+      tapTimes = tapTimes.filter(t => now - t <= 1000);
+      if (tapTimes.length >= 3) {
+        showPasswordInput();
+        tapTimes = [];
+      }
+    }
+
+    document.getElementById("alertOverlay").addEventListener("touchend", registerTap);
+    document.getElementById("alertOverlay").addEventListener("click", registerTap);
+
+    document.addEventListener("keydown", e => {
+      if (e.code === "Space" && document.getElementById("alertOverlay").style.display === "flex") {
+        registerTap();
+        e.preventDefault();
+      }
+    });
+
+    document.getElementById("passInput").addEventListener("keydown", e => {
+      if (e.key === "Enter") tryUnlock();
+    });
+
+    document.getElementById("unlockBtn").addEventListener("click", tryUnlock);
+  </script>
+</body>
+</html>
