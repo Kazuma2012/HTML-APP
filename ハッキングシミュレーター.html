@@ -1,0 +1,251 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Terminal Hack Simulation</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: black;
+      color: #00ff00;
+      font-family: "Courier New", monospace;
+      padding: 20px;
+      position: relative;
+      overflow-y: auto; /* スクロール可能にする */
+    }
+    #background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url('https://i.imgur.com/2cOaJ.png');
+      background-size: cover;
+      background-position: center;
+      opacity: 0.05;
+      z-index: 0;
+    }
+    #terminal, #settings {
+      display: none;
+      position: relative;
+      z-index: 1;
+    }
+    #output, input, #completion, #settings {
+      text-shadow: 0 0 4px #00ff00;
+    }
+    #output {
+      white-space: pre-wrap;
+      margin-bottom: 10px;
+      font-size: 20px;
+    }
+    input {
+      background: black;
+      color: #00ff00;
+      border: none;
+      outline: none;
+      width: 100%;
+      font-size: 20px;
+      font-family: "Courier New", monospace;
+    }
+    #progressContainer {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60%;
+      background: #222;
+      border: 1px solid #00ff00;
+      display: none;
+      z-index: 2;
+    }
+    #progressBar {
+      height: 30px;
+      width: 0%;
+      background-color: #00ff00;
+    }
+    #progressPercent {
+      position: absolute;
+      top: 0;
+      right: 5px;
+      color: #00ff00;
+      text-shadow: 0 0 4px #00ff00;
+      font-family: 'Courier New', monospace;
+    }
+    #completion, #error {
+      display: none;
+      font-size: 100px; /* 超特大文字に変更 */
+      text-align: center;
+      font-weight: bold;
+      animation: blink 1s step-start 0s infinite;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+    }
+    #completion {
+      color: #00ff88;
+      text-shadow: 0 0 20px #00ff88;
+    }
+    #error {
+      color: red;
+      text-shadow: 0 0 15px red;
+      animation: blink 0.6s step-start 0s infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+    #settings {
+      margin-top: 40px;
+      padding-bottom: 200px; /* スクロールしやすくする余白 */
+    }
+    #settings h2 {
+      color: red;
+      text-shadow: 0 0 4px red;
+      font-size: 48px; /* 大きくしたよ */
+    }
+    select {
+      background: black;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      font-family: "Courier New", monospace;
+      font-size: 24px; /* 大きくしたよ */
+      margin-bottom: 10px;
+    }
+    #settings li {
+      font-size: 24px; /* 設定項目の文字も大きく */
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="background"></div>
+
+<div id="terminal">
+  <div id="output">[ SYSTEM BOOTED ]<br>> Waiting for input...</div>
+  <input id="commandInput" autofocus />
+  <div id="progressContainer">
+    <div id="progressBar"></div>
+    <div id="progressPercent">0%</div>
+  </div>
+  <div id="completion">COMPLETION</div>
+  <div id="error">ERROR</div>
+</div>
+
+<div id="settings">
+  <h2>Settings Page</h2>
+  <ul>
+    <li>Auto-Destruct Sequence: <select><option>ENABLED</option><option>DISABLED</option></select></li>
+    <li>Firewall Override: <select><option>ACTIVE</option><option>INACTIVE</option></select></li>
+    <li>AI Core Limiters: <select><option>DISABLED</option><option>ENABLED</option></select></li>
+    <li>Satellite Link: <select><option>CONNECTED</option><option>DISCONNECTED</option></select></li>
+    <li>Root Access Level: <select><option>MAXIMUM</option><option>MINIMUM</option></select></li>
+    <li>System Clock Drift: <select><option>STABLE</option><option>UNSTABLE</option></select></li>
+    <li>Quantum Key Sync: <select><option>LOCKED</option><option>UNLOCKED</option></select></li>
+    <li>Overclock Mode: <select><option>ON</option><option>OFF</option></select></li>
+    <li>Neural Link Status: <select><option>CONNECTED</option><option>INTERRUPTED</option></select></li>
+    <li>Power Core Safety: <select><option>SECURE</option><option>UNSECURE</option></select></li>
+    <li>Signal Scrambler: <select><option>ACTIVE</option><option>OFFLINE</option></select></li>
+    <li>Remote Override: <select><option>ON</option><option>OFF</option></select></li>
+    <li>Exploit Scanner: <select><option>RUNNING</option><option>STOPPED</option></select></li>
+    <li>Black ICE Defense: <select><option>UP</option><option>DOWN</option></select></li>
+    <li>Kernel Integrity: <select><option>VALID</option><option>CORRUPTED</option></select></li>
+  </ul>
+</div>
+
+<script>
+  const terminal = document.getElementById("terminal");
+  const input = document.getElementById("commandInput");
+  const output = document.getElementById("output");
+  const progressBar = document.getElementById("progressBar");
+  const progressContainer = document.getElementById("progressContainer");
+  const completion = document.getElementById("completion");
+  const error = document.getElementById("error");
+  const settings = document.getElementById("settings");
+
+  terminal.style.display = "block";
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      const cmd = input.value.trim();
+      output.innerHTML += `<br>> ${cmd}<br>`;
+      input.disabled = true;
+
+      // ひらがなが含まれてたら即エラー
+      if (/[ぁ-ん]/.test(cmd)) {
+        showError();
+        return;
+      }
+
+      startFakeHack();
+    }
+  });
+
+  function startFakeHack() {
+    let count = 0;
+    const shouldError = Math.random() < 0.05;
+    const errorAt = shouldError ? Math.floor(Math.random() * 40) + 1 : null;
+
+    progressContainer.style.display = "block";
+
+    const interval = setInterval(() => {
+      count++;
+
+      if (shouldError && count === errorAt) {
+        clearInterval(interval);
+        showError();
+        return;
+      }
+
+      const line = randomString(getRandomInt(70, 90));
+      output.innerHTML += line + "<br>";
+
+      const progress = count * 2.5;
+      progressBar.style.width = progress + "%";
+      document.getElementById("progressPercent").textContent = Math.floor(progress) + "%";
+
+      if (count >= 40) {
+        clearInterval(interval);
+        progressBar.style.width = "100%";
+        document.getElementById("progressPercent").textContent = "100%";
+        showCompletion();
+      }
+
+      window.scrollTo(0, document.body.scrollHeight);
+    }, 150);
+  }
+
+  function showCompletion() {
+    progressContainer.style.display = "none";
+    completion.style.display = "block";
+    setTimeout(() => {
+      terminal.style.display = "none";
+      completion.style.display = "none";
+      settings.style.display = "block";
+    }, 3000);
+  }
+
+  function showError() {
+    error.style.display = "block";
+    input.disabled = true;
+    progressContainer.style.display = "none";
+  }
+
+  function randomString(length) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:',.<>/?~`";
+    let result = "";
+    for (let i = 0; i < length; i++) {
+      result += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return result;
+  }
+
+  function getRandomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+</script>
+
+</body>
+</html>
