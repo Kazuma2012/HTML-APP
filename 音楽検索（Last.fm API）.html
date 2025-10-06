@@ -1,0 +1,89 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音楽検索</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f4f4f8;
+            padding: 2rem;
+        }
+        .search-container {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        input[type="text"] {
+            padding: 0.5rem;
+            width: 60%;
+            font-size: 1rem;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            font-size: 1rem;
+            margin-left: 0.5rem;
+            cursor: pointer;
+        }
+        .result-item {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <h1>🎵 音楽検索（Last.fm API）</h1>
+        <input type="text" id="search-query" placeholder="アーティストや曲名を検索..." />
+        <button onclick="searchMusic()">検索</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_KEY = 'd9a56b3966c272981878198a98484e08'; // ← あなたのAPIキー！
+
+        function searchMusic() {
+            const query = document.getElementById('search-query').value.trim();
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            if (!query) {
+                resultsDiv.innerHTML = '<p>キーワードを入力してください。</p>';
+                return;
+            }
+
+            const url = `https://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(query)}&api_key=${API_KEY}&format=json`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const tracks = data.results.trackmatches.track;
+                    if (!tracks || tracks.length === 0) {
+                        resultsDiv.innerHTML = '<p>検索結果が見つかりませんでした。</p>';
+                        return;
+                    }
+
+                    tracks.forEach(track => {
+                        const item = document.createElement('div');
+                        item.className = 'result-item';
+                        item.innerHTML = `
+                            <h3>${track.name}</h3>
+                            <p>アーティスト: ${track.artist}</p>
+                            <a href="${track.url}" target="_blank">Last.fmで見る</a>
+                        `;
+                        resultsDiv.appendChild(item);
+                    });
+                })
+                .catch(error => {
+                    console.error('データ取得エラー:', error);
+                    resultsDiv.innerHTML = '<p>データ取得中にエラーが発生しました。</p>';
+                });
+        }
+    </script>
+</body>
+</html>
