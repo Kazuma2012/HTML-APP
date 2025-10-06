@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>宝くじゲーム 完全版</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; text-align: center; }
+    button { margin: 3px; padding: 10px 20px; font-size: 18px; }
+    .ticket { display: inline-block; border: 1px solid #ccc; margin: 3px; padding: 5px; width: 60px; text-align: center; }
+    .hit { background-color: gold; }
+    #summary { margin-top: 20px; border: 1px solid #ccc; padding: 10px; background: #f9f9f9; }
+    .positive { color: green; }
+    .negative { color: red; }
+
+    /* 📌 中央に表示＋大きめスタイル */
+    #keypad, #startNum {
+      display: block;
+      margin: 20px auto;
+      text-align: center;
+    }
+
+    #startNum {
+      padding: 15px;
+      font-size: 24px;
+      width: 250px;
+      border: 2px solid #007bff;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    #ticketArea {
+      margin-top: 20px;
+    }
+
+    canvas {
+      margin: 20px auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎯 宝くじゲーム 完全版</h1>
+
+  <!-- モード選択 -->
+  <div style="margin-top: 10px;">
+    <label><input type="radio" name="mode" value="連番" checked /> 連番</label>
+    <label><input type="radio" name="mode" value="バラ" /> バラ</label>
+  </div>
+
+  <!-- 連番番号入力 -->
+  <input type="number" id="startNum" placeholder="（連番用）開始番号" />
+
+  <!-- 購入枚数 -->
+  <div id="keypad">
+    <p>🧾 購入枚数を選んでね：</p>
+    <div>
+      <button onclick="setCount(1)">1</button>
+      <button onclick="setCount(2)">2</button>
+      <button onclick="setCount(3)">3</button>
+    </div>
+    <div>
+      <button onclick="setCount(4)">4</button>
+      <button onclick="setCount(5)">5</button>
+      <button onclick="setCount(10)">10</button>
+    </div>
+    <div>
+      <button onclick="setCount(50)">50</button>
+      <button onclick="setCount(100)">100</button>
+    </div>
+    <p>✅ 選択中：<span id="selectedCount">1</span>枚</p>
+  </div>
+
+  <!-- 実行ボタン -->
+  <button onclick="buyTickets()">くじを買う！</button>
+  <button onclick="draw()">抽選スタート！</button>
+
+  <!-- 結果表示 -->
+  <div id="ticketArea"></div>
+  <div id="summary"></div>
+  <canvas id="resultChart" style="max-width: 400px;"></canvas>
+
+  <script>
+    let tickets = [];
+    let winNumber = "";
+    let selectedCount = 1;
+    let chart = null;
+
+    function pad4(num) {
+      return num.toString().padStart(4, '0');
+    }
+
+    function setCount(n) {
+      selectedCount = n;
+      document.getElementById("selectedCount").textContent = n;
+    }
+
+    function getSelectedMode() {
+      return document.querySelector('input[name="mode"]:checked').value;
+    }
+
+    function generateRandomTickets(count) {
+      const set = new Set();
+      while (set.size < count) {
+        const rand = Math.floor(Math.random() * 10000);
+        set.add(pad4(rand));
+      }
+      return Array.from(set);
+    }
+
+    function buyTickets() {
+      const mode = getSelectedMode();
+      const count = selectedCount;
+
+      if (mode === "連番") {
+        let start = parseInt(document.getElementById('startNum').value, 10);
+        if (isNaN(start) || start < 0 || start > 9999) {
+          alert("連番モードでは0〜9999の4桁番号を入力してね！");
+          return;
+        }
+        tickets = [];
+        for (let i = 0; i < count; i++) {
+          let num = (start + i) % 10000;
+          tickets.push(pad4(num));
+        }
+      } else if (mode === "バラ") {
+        tickets = generateRandomTickets(count);
+      }
+
+      document.getElementById('summary').innerHTML = "";
+      document.getElementById('resultChart').style.display = "none";
+      if (chart) chart.destroy();
+      displayTickets();
+    }
+
+    function draw() {
+      winNumber = pad4(Math.floor(Math.random() * 10000));
+      let rankCount = { "1等": 0, "2等": 0, "3等": 0, "4等": 0, "ハズレ": 0 };
+      let totalWin = 0;
+
+      tickets.forEach((ticket, index) => {
+        let rank = getRank(ticket, winNumber);
+        if (rank !== "ハズレ") {
+          document.getElementById('ticketArea').children[index].classList.add("hit");
+        }
+        rankCount[rank]++;
+        totalWin += getPrize(rank);
+      });
+
+      const cost = tickets.length * 300;
+      const profit = totalWin - cost;
+      const profitClass = profit >= 0 ? "positive" : "negative";
+
+      let summary = `
+        <h3>🎯 抽選番号：${winNumber}</h3>
+        <p>🎟️ 購入枚数：${tickets.length}枚（300円 × ${tickets.length} = ${cost.toLocaleString()}円）</p>
+        <p>💰 合計当選金額：${totalWin.toLocaleString()}円</p>
+        <p class="${profitClass}">📈 収支：${profit >= 0 ? '+' : ''}${profit.toLocaleString()}円</p>
+        <h4>🏆 当選内訳：</h4>
+        <ul>
+          <li>1等：${rankCount["1等"]}本（${(rankCount["1等"] * 1000000).toLocaleString()}円）</li>
+          <li>2等：${rankCount["2等"]}本（${(rankCount["2等"] * 100000).toLocaleString()}円）</li>
+          <li>3等：${rankCount["3等"]}本（${(rankCount["3等"] * 10000).toLocaleString()}円）</li>
+          <li>4等：${rankCount["4等"]}本（${(rankCount["4等"] * 1000).toLocaleString()}円）</li>
+          <li>ハズレ：${rankCount["ハズレ"]}本</li>
+        </ul>
+      `;
+      document.getElementById('summary').innerHTML = `<div id="summary">${summary}</div>`;
+      drawChart(rankCount);
+    }
+
+    function getPrize(rank) {
+      switch (rank) {
+        case "1等": return 1000000;
+        case "2等": return 100000;
+        case "3等": return 10000;
+        case "4等": return 1000;
+        default: return 0;
+      }
+    }
+
+    function getRank(ticket, win) {
+      if (ticket === win) return "1等";
+      if (ticket.slice(1) === win.slice(1)) return "2等";
+      if (ticket.slice(2) === win.slice(2)) return "3等";
+      if (ticket.slice(3) === win.slice(3)) return "4等";
+      return "ハズレ";
+    }
+
+    function displayTickets() {
+      const area = document.getElementById('ticketArea');
+      area.innerHTML = "";
+      tickets.forEach(t => {
+        const div = document.createElement("div");
+        div.className = "ticket";
+        div.textContent = t;
+        area.appendChild(div);
+      });
+    }
+
+    function drawChart(rankCount) {
+      const ctx = document.getElementById('resultChart');
+      document.getElementById('resultChart').style.display = "block";
+
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ["1等", "2等", "3等", "4等", "ハズレ"],
+          datasets: [{
+            label: '当選数',
+            data: [
+              rankCount["1等"],
+              rankCount["2等"],
+              rankCount["3等"],
+              rankCount["4等"],
+              rankCount["ハズレ"]
+            ],
+            backgroundColor: ['#ff5959', '#ffa500', '#87ceeb', '#90ee90', '#ccc']
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
