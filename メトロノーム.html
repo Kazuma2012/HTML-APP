@@ -1,0 +1,379 @@
+
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>メトロノーム</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  /* （CSSは元のまま） */
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #e3e9f1;
+    color: #222;
+    padding: 40px 20px;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    box-sizing: border-box;
+    margin: 0;
+  }
+  h1 {
+    margin-bottom: 30px;
+    font-weight: 700;
+  }
+  #container {
+    display: flex;
+    flex-direction: row-reverse;
+    width: 90vw;
+    max-width: 900px;
+    height: 400px;
+    gap: 30px;
+  }
+  #controls {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  #status {
+    font-size: 18px;
+    background: #fff;
+    padding: 12px 16px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    text-align: center;
+  }
+  button, input[type="range"] {
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: none;
+    padding: 14px 24px;
+    background: #4a7cf3;
+    color: white;
+    box-shadow: 0 3px 6px rgba(74,124,243,0.5);
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+  button:active {
+    background-color: #2f54f4;
+  }
+  button:disabled {
+    background-color: #999;
+    cursor: default;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    background: #cbd5e1;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    background: #4a7cf3;
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: 0 0 5px rgba(74,124,243,0.7);
+    margin-top: -7px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    background: #4a7cf3;
+    cursor: pointer;
+    border-radius: 50%;
+  }
+  #tap-button {
+    background: #888;
+    width: 100%;
+    transition: background-color 0.3s ease;
+  }
+  #tap-button.active {
+    background-color: #f24a4a;
+    box-shadow: 0 0 15px #f24a4a;
+  }
+  .small-btn {
+    width: 100%;
+    max-width: 150px;
+  }
+  .speed-buttons, .volume-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+  .mode-start-group {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+  #stick-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+  }
+  #stick {
+    width: 7px;
+    height: 250px;
+    background: #222;
+    border-radius: 3px;
+    box-shadow: 0 0 10px #444;
+    transform-origin: bottom center;
+  }
+</style>
+</head>
+<body>
+  <div id="container">
+    <div id="controls">
+      <div id="status">BPM: 60 | モード: 0</div>
+      <button id="tap-button">タップ音</button>
+      <div class="mode-start-group">
+        <button id="mode-button" class="small-btn">モード切替</button>
+        <button id="startstop-button" class="small-btn">停止</button>
+      </div>
+      <input type="range" id="bpm-slider" min="30" max="240" value="60" step="1" />
+      <div class="speed-buttons">
+        <button id="speed-down" class="small-btn">－</button>
+        <button id="speed-up" class="small-btn">＋</button>
+      </div>
+      <div class="volume-buttons">
+        <button id="volume-down" class="small-btn">🔉－</button>
+        <button id="volume-up" class="small-btn">🔊＋</button>
+      </div>
+    </div>
+    <div id="stick-container">
+      <div id="stick"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const tapBtn = document.getElementById('tap-button');
+  const modeBtn = document.getElementById('mode-button');
+  const startStopBtn = document.getElementById('startstop-button');
+  const bpmSlider = document.getElementById('bpm-slider');
+  const speedUpBtn = document.getElementById('speed-up');
+  const speedDownBtn = document.getElementById('speed-down');
+  const volUpBtn = document.getElementById('volume-up');
+  const volDownBtn = document.getElementById('volume-down');
+  const statusDiv = document.getElementById('status');
+  const stick = document.getElementById('stick');
+
+  let bpm = 60;
+  let volume = 0.3;
+  let mode = 0;
+  let beatIndex = 0;
+  let pattern = [];
+  let isRunning = false;
+
+
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioContext();
+
+  function playSound(freq) {
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.frequency.value = freq;
+    osc.type = 'square';
+    gainNode.gain.value = volume;
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start();
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+    osc.stop(audioCtx.currentTime + 0.1);
+  }
+
+  function playClick() {
+    playSound(800);
+  }
+
+  function playPop() {
+    playSound(400);
+  }
+
+  function generatePattern(m) {
+    if (m === 0) return [1];
+    if (m === 1) return [2];
+    const arr = [1];
+    for (let i = 0; i < m - 1; i++) arr.push(2);
+    return arr;
+  }
+
+  function updateStatus() {
+    const volPercent = Math.round(volume * 100);
+    statusDiv.textContent = `BPM: ${bpm} | モード: ${mode} | 音量: ${volPercent}%`;
+  }
+
+  function playBeat() {
+    if (pattern.length === 0) return;
+    const currentBeat = pattern[beatIndex % pattern.length];
+    if (currentBeat === 1) playClick();
+    else if (currentBeat === 2) playPop();
+
+    tapBtn.classList.add('active');
+    setTimeout(() => tapBtn.classList.remove('active'), 150);
+    beatIndex++;
+  }
+
+  let timerId = null;
+  function startMetronome() {
+    if (timerId) clearInterval(timerId);
+    const interval = 60000 / bpm;
+    pattern = generatePattern(mode);
+    beatIndex = 0;
+    timerId = setInterval(playBeat, interval);
+  }
+
+  function stopMetronome() {
+    if (timerId) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+  }
+
+  function changeBpm(delta) {
+    bpm = Math.min(240, Math.max(30, bpm + delta));
+    bpmSlider.value = bpm;
+    updateStatus();
+    if (isRunning) startMetronome();
+  }
+
+  function changeVolume(delta) {
+    volume = Math.min(10, Math.max(0, volume + delta));
+    updateStatus();
+  }
+
+  function setupLongPress(button, callback) {
+    let intervalId = null;
+    let timeoutId = null;
+    button.addEventListener('mousedown', () => {
+      callback();
+      timeoutId = setTimeout(() => {
+        intervalId = setInterval(callback, 100);
+      }, 500);
+    });
+    ['mouseup', 'mouseleave', 'mouseout', 'touchend', 'touchcancel'].forEach(evt => {
+      button.addEventListener(evt, () => {
+        clearTimeout(timeoutId);
+        clearInterval(intervalId);
+      });
+    });
+  }
+
+  tapBtn.addEventListener('click', () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    playClick();
+    tapBtn.classList.add('active');
+    setTimeout(() => tapBtn.classList.remove('active'), 150);
+  });
+
+  modeBtn.addEventListener('click', () => {
+    mode = (mode + 1) % 10;
+    updateStatus();
+    if (isRunning) startMetronome();
+  });
+
+  startStopBtn.addEventListener('click', () => {
+    isRunning = !isRunning;
+    if (isRunning) {
+      startMetronome();
+      startStopBtn.textContent = '停止';
+    } else {
+      stopMetronome();
+      startStopBtn.textContent = '開始';
+    }
+  });
+
+  bpmSlider.addEventListener('input', (e) => {
+    bpm = parseInt(e.target.value);
+    updateStatus();
+    if (isRunning) startMetronome();
+  });
+
+  setupLongPress(speedUpBtn, () => changeBpm(1));
+  setupLongPress(speedDownBtn, () => changeBpm(-1));
+  setupLongPress(volUpBtn, () => changeVolume(0.05));
+  setupLongPress(volDownBtn, () => changeVolume(-0.05));
+
+  const maxAngle = 45;
+  const startTime = Date.now();
+
+  function updateStick() {
+    if (!isRunning) return;
+    const elapsed = (Date.now() - startTime) / 1000;
+    const t = (elapsed * bpm) / 60;
+    const angle = Math.sin(t * Math.PI) * maxAngle;
+    stick.style.transform = `rotate(${angle}deg)`;
+  }
+
+  function animate() {
+    updateStick();
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+  updateStatus();
+ 
+
+  // 🔽 この部分を即時関数の中に入れること！
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+
+     // 数字キーが押されたときの処理
+     if (e.key >= '0' && e.key <= '9') {
+       mode = parseInt(e.key);
+       updateStatus();
+       if (isRunning) startMetronome();
+       return; // 他のキー処理にいかないように return
+     }
+
+
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        startStopBtn.click(); // ←これが「見える」ようになる
+        break;
+       case 'Enter': // エンターキー
+        e.preventDefault();
+        tapBtn.click();  // タップ音ボタンをクリックしたのと同じ動作
+        break;
+       case 'Shift':
+        e.preventDefault();
+        modeBtn.click(); // ← モード切替！
+        break;
+       case 'ArrowRight':
+        changeBpm(1);
+        break;
+      case 'ArrowLeft':
+        changeBpm(-1);
+        break;
+      case 'ArrowUp':
+        changeVolume(0.05);
+        break;
+      case 'ArrowDown':
+        changeVolume(-0.05);
+        break;
+    }
+  });
+})();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(() => console.log('Service Worker registered ✅'))
+    .catch(err => console.error('SW登録失敗:', err));
+}
+      
+</script>
+
+</body>
+</html>
