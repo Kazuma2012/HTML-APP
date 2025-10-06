@@ -1,0 +1,119 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Appetize マルチランチャー</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh;
+      display: grid; place-items: center;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f8;
+    }
+    .card {
+      background: #fff; padding: 24px; border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12);
+      width: min(820px, 92vw);
+    }
+    h1 { margin: 0 0 12px; font-size: 1.25rem; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    select, button {
+      font-size: 1rem; padding: 12px 14px; border-radius: 10px; border: 1px solid #d0d7de;
+    }
+    select { flex: 1; min-width: 260px; }
+    button {
+      background: #007bff; color: #fff; border: none; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    }
+    button:hover { filter: brightness(0.95); }
+    .help { margin-top: 10px; font-size: .9rem; color: #5f6b7a; }
+    .list { margin-top: 14px; font-size: .95rem; }
+    .list code { background: #f1f5f9; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>エミュレーターを選択して開く </h1>
+    <div class="row">
+      <select id="simSelector" aria-label="エミュレーター選択"></select>
+      <button id="openBtn">開く</button>
+    </div>
+    <div class="help">ポップアップがブロックされた場合は、同じタブで開きます。</div>
+    <div class="list">
+      <div>追加・編集したいときは <code>items</code> 配列を書き換えてください。</div>
+    </div>
+  </div>
+
+  <script>
+    const BASE = "https://appetize.io/embed/";
+    const items = [
+      {
+        label: "iPhone 16 Pro Max / iOS 18.2",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=iphone16promax&osVersion=18.2&toolbar=true&record=true"
+      },
+      {
+        label: "iPad Pro 12.9 (5th) / iOS 16.2",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=ipadpro129inch5thgeneration&osVersion=16.2&toolbar=true&record=true"
+      },
+      {
+        label: "iPad Pro 12.9 (5th) / iOS 17.2",
+        // もとの `&toolba` を補完して toolbar=true&record=true にしています
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=ipadpro129inch5thgeneration&osVersion=17.2&toolbar=true&record=true"
+      },
+      {
+        label: "iPad Pro 12.9 (5th) / iOS 18.2",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=ipadpro129inch5thgeneration&osVersion=18.2&toolbar=true&record=true"
+      },
+      {
+        label: "Pixel 9 Pro / Android 15.0",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=pixel9pro&osVersion=15.0&toolbar=true&record=true"
+      },
+      {
+        label: "Pixel Tablet / Android 13.0",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=pixeltablet&osVersion=13.0&toolbar=true&record=true"
+      },
+      {
+        label: "Pixel Tablet / Android 14.0",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=pixeltablet&osVersion=14.0&toolbar=true&record=true"
+      },
+      {
+        label: "Pixel Tablet / Android 15.0",
+        path: "standalone_iwktob6f44qm3e5rdeo6roakdy?device=pixeltablet&osVersion=15.0&toolbar=true&record=true"
+      }
+    ];
+
+    // セレクト生成
+    const sel = document.getElementById("simSelector");
+    items.forEach((it, i) => {
+      const opt = document.createElement("option");
+      opt.value = BASE + it.path;
+      opt.textContent = it.label;
+      sel.appendChild(opt);
+    });
+
+    // 前回選択を復元
+    const saved = localStorage.getItem("lastSimIndex");
+    if (saved && items[saved]) sel.selectedIndex = Number(saved);
+
+    // 開く（ポップアップブロック時は同タブでフォールバック）
+    function openSelected() {
+      const idx = sel.selectedIndex;
+      localStorage.setItem("lastSimIndex", idx);
+      const url = sel.value;
+
+      // ユーザー操作直結で window.open → それでも null ならブロック扱い
+      const win = window.open(url, "_blank", "noopener");
+      if (!win) location.href = url;
+    }
+
+    document.getElementById("openBtn").addEventListener("click", openSelected);
+    // Enterキーでも開ける
+    sel.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") openSelected();
+    });
+  </script>
+</body>
+</html>
