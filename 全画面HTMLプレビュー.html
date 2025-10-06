@@ -1,0 +1,115 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>全画面HTMLプレビュー</title>
+<style>
+  body {
+    margin: 0;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    background: #333;
+    color: white;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  header button {
+    padding: 4px 8px;
+    border: none;
+    cursor: pointer;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  textarea {
+    width: 50%;
+    border: none;
+    padding: 8px;
+    resize: none;
+    font-family: monospace;
+    font-size: 14px;
+    outline: none;
+  }
+  iframe {
+    width: 50%;
+    border: none;
+    background: white;
+  }
+</style>
+</head>
+<body>
+<header>
+  <button id="liveToggle">ライブ: ON</button>
+  <button id="fullscreenBtn">全画面プレビュー</button>
+  <button id="newWindowBtn">新しいウィンドウ</button>
+</header>
+<main>
+  <textarea id="editor"><!DOCTYPE html>
+<html>
+<head>
+<title>サンプル</title>
+</head>
+<body>
+<h1>Hello World</h1>
+<p>ここにHTMLを書いてみよう！</p>
+</body>
+</html></textarea>
+  <iframe id="preview" sandbox="allow-same-origin allow-scripts"></iframe>
+</main>
+
+<script>
+const editor = document.getElementById("editor");
+const preview = document.getElementById("preview");
+const liveToggle = document.getElementById("liveToggle");
+const fullscreenBtn = document.getElementById("fullscreenBtn");
+const newWindowBtn = document.getElementById("newWindowBtn");
+
+let live = true;
+
+// プレビュー更新
+function updatePreview() {
+  preview.srcdoc = editor.value;
+}
+
+// ライブ切り替え
+liveToggle.addEventListener("click", () => {
+  live = !live;
+  liveToggle.textContent = "ライブ: " + (live ? "ON" : "OFF");
+  if (live) updatePreview();
+});
+
+editor.addEventListener("input", () => {
+  if (live) updatePreview();
+});
+
+// 初期表示
+updatePreview();
+
+// 全画面プレビュー（iframe）
+fullscreenBtn.addEventListener("click", () => {
+  if (preview.requestFullscreen) {
+    preview.requestFullscreen();
+  } else if (preview.webkitRequestFullscreen) {
+    preview.webkitRequestFullscreen();
+  }
+});
+
+// 新しいウィンドウで表示
+newWindowBtn.addEventListener("click", () => {
+  const blob = new Blob([editor.value], {type: "text/html"});
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 30000); // 30秒後にURL破棄
+});
+</script>
+</body>
+</html>
