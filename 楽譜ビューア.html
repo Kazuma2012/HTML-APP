@@ -1,0 +1,334 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>楽譜ビューア</title>
+    <link rel="icon" type="image/png" href="https://i.postimg.cc/52HBYV8G/music.png">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 共通スタイル */
+        body, html {
+            overscroll-behavior: none;
+            touch-action: manipulation; /* デフォルトのタッチ操作を許可 */
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        /* UI要素のドラッグや選択を防止 */
+        #sheet-music-img {
+            -webkit-user-drag: none;
+            user-drag: none;
+        }
+        /* コントロールパネルのアニメーション */
+        #controls-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body class="text-white m-0 p-0 overflow-hidden">
+
+    <!-- メニュー画面 -->
+    <div id="menu-screen" class="w-screen h-screen flex flex-col items-center justify-center p-8 text-center">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">楽譜ビューア</h1>
+        <p class="text-lg md:text-xl text-gray-300 mb-8">楽譜画像ファイルを選択、または保存したセットリストを選んでください。</p>
+        
+        <button id="select-files-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-transform transform hover:scale-105 shadow-lg mb-8">
+            楽譜ファイルを選択
+        </button>
+        <input type="file" id="file-input" multiple accept="image/*" class="hidden">
+        
+        <!-- ブックマーク（セットリスト）エリア -->
+        <div class="w-full max-w-md">
+            <h2 class="text-2xl font-semibold border-b-2 border-gray-600 pb-2 mb-4">セットリスト</h2>
+            <div id="bookmarks-list" class="space-y-2 text-left">
+                <!-- ここに保存したセットリストが動的に追加されます -->
+                <p id="no-bookmarks" class="text-gray-500 text-center">保存されたセットリストはありません。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ビューア画面 -->
+    <div id="viewer-screen" class="hidden">
+        <div id="viewer-container" class="w-screen h-screen flex items-center justify-center relative bg-black">
+            <img id="sheet-music-img" src="" alt="楽譜" class="max-w-full max-h-full object-contain">
+        </div>
+
+        <div id="controls-overlay" class="absolute inset-0 bg-black bg-opacity-50 flex flex-col justify-between p-4 md:p-8 opacity-0 pointer-events-none">
+            <div class="flex justify-between items-center">
+                <button id="back-to-menu-btn" class="p-3 bg-gray-900 bg-opacity-70 rounded-full hover:bg-gray-700 transition-colors">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <span id="page-indicator" class="text-lg bg-gray-900 bg-opacity-70 px-4 py-2 rounded-full"></span>
+            </div>
+            <div class="flex justify-between items-center w-full">
+                 <button id="save-setlist-btn" title="セットリストを保存" class="p-3 bg-gray-900 bg-opacity-70 rounded-full hover:bg-gray-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                </button>
+                <div class="w-12 h-12"></div> <!-- ズームリセットボタンがあった場所のスペーサー -->
+                <button id="fullscreen-toggle" title="フルスクリーン" class="p-3 bg-gray-900 bg-opacity-70 rounded-full hover:bg-gray-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM要素 ---
+        const menuScreen = document.getElementById('menu-screen');
+        const selectFilesBtn = document.getElementById('select-files-btn');
+        const fileInput = document.getElementById('file-input');
+        const bookmarksList = document.getElementById('bookmarks-list');
+        const noBookmarksMsg = document.getElementById('no-bookmarks');
+        const viewerScreen = document.getElementById('viewer-screen');
+        const viewerContainer = document.getElementById('viewer-container');
+        const sheetMusicImg = document.getElementById('sheet-music-img');
+        const controlsOverlay = document.getElementById('controls-overlay');
+        const pageIndicator = document.getElementById('page-indicator');
+        const backToMenuBtn = document.getElementById('back-to-menu-btn');
+        const fullscreenToggle = document.getElementById('fullscreen-toggle');
+        const saveSetlistBtn = document.getElementById('save-setlist-btn');
+
+        // --- 状態管理 ---
+        let currentFiles = [];
+        let musicSheets = [];
+        let currentPage = 0;
+        let totalPages = 0;
+        let isControlsVisible = false;
+        let controlsTimeout;
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        // --- DB関連 ---
+        let db;
+
+        // --- 初期化 ---
+        const init = () => {
+            initDB();
+            setupMenuEventListeners();
+            setupViewerEventListeners();
+        };
+
+        // --- IndexedDB (ブックマーク保存用) ---
+        const initDB = () => {
+            const request = indexedDB.open('MusicSheetViewerDB', 1);
+            request.onerror = (e) => console.error("Database error:", e.target.error);
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                loadBookmarks();
+            };
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('setlists')) {
+                    db.createObjectStore('setlists', { keyPath: 'name' });
+                }
+            };
+        };
+
+        const saveSetlist = (name, files) => {
+            if (!db || files.length === 0) return;
+            const transaction = db.transaction(['setlists'], 'readwrite');
+            const store = transaction.objectStore('setlists');
+            store.put({ name, files });
+            transaction.oncomplete = () => {
+                alert(`「${name}」を保存しました。`);
+                loadBookmarks();
+            };
+        };
+
+        const loadBookmarks = () => {
+            if (!db) return;
+            const transaction = db.transaction(['setlists'], 'readonly');
+            const store = transaction.objectStore('setlists');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                bookmarksList.innerHTML = '';
+                const setlists = request.result;
+                if (setlists.length === 0) {
+                    noBookmarksMsg.style.display = 'block';
+                    bookmarksList.appendChild(noBookmarksMsg);
+                } else {
+                    noBookmarksMsg.style.display = 'none';
+                    setlists.forEach(setlist => {
+                        const div = document.createElement('div');
+                        div.className = 'flex items-center justify-between bg-gray-800 p-2 rounded-lg';
+                        const nameBtn = document.createElement('button');
+                        nameBtn.textContent = setlist.name;
+                        nameBtn.className = 'flex-grow text-left hover:text-blue-400 truncate';
+                        nameBtn.title = setlist.name;
+                        nameBtn.onclick = () => loadSetlistFromDB(setlist.name);
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.innerHTML = '&times;';
+                        deleteBtn.className = 'text-red-500 font-bold text-2xl px-2 hover:text-red-300 flex-shrink-0';
+                        deleteBtn.onclick = () => deleteSetlist(setlist.name);
+
+                        div.appendChild(nameBtn);
+                        div.appendChild(deleteBtn);
+                        bookmarksList.appendChild(div);
+                    });
+                }
+            };
+        };
+
+        const loadSetlistFromDB = (name) => {
+            if (!db) return;
+            const transaction = db.transaction(['setlists'], 'readonly');
+            const store = transaction.objectStore('setlists');
+            const request = store.get(name);
+            request.onsuccess = () => {
+                const setlist = request.result;
+                if (setlist && setlist.files) {
+                    currentFiles = setlist.files;
+                    startViewerWithFiles(currentFiles);
+                }
+            };
+        };
+        
+        const deleteSetlist = (name) => {
+            if (!db || !confirm(`「${name}」を削除しますか？`)) return;
+            const transaction = db.transaction(['setlists'], 'readwrite');
+            const store = transaction.objectStore('setlists');
+            store.delete(name);
+            transaction.oncomplete = loadBookmarks;
+        };
+
+        // --- 画面切り替え ---
+        const showMenu = () => {
+            musicSheets.forEach(url => URL.revokeObjectURL(url));
+            musicSheets = [];
+            currentFiles = [];
+            menuScreen.classList.remove('hidden');
+            viewerScreen.classList.add('hidden');
+        };
+
+        const showViewer = () => {
+            menuScreen.classList.add('hidden');
+            viewerScreen.classList.remove('hidden');
+        };
+
+        // --- メニュー画面の処理 ---
+        const setupMenuEventListeners = () => {
+            selectFilesBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileSelect);
+        };
+        
+        const handleFileSelect = (event) => {
+            const files = event.target.files;
+            if (files.length === 0) return;
+            currentFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            startViewerWithFiles(currentFiles);
+            fileInput.value = '';
+        };
+        
+        const startViewerWithFiles = (files) => {
+            musicSheets.forEach(url => URL.revokeObjectURL(url));
+            musicSheets = files.map(file => URL.createObjectURL(file));
+            totalPages = musicSheets.length;
+            currentPage = 0;
+            updateSheetMusic();
+            preloadImages();
+            showViewer();
+        };
+
+        // --- ビューア画面の処理 ---
+        const setupViewerEventListeners = () => {
+            viewerContainer.addEventListener('click', handleViewerClick);
+            viewerContainer.addEventListener('touchstart', (e) => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+            viewerContainer.addEventListener('touchend', (e) => { touchEndX = e.changedTouches[0].screenX; handleSwipe(); });
+            backToMenuBtn.addEventListener('click', (e) => { e.stopPropagation(); showMenu(); });
+            fullscreenToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleFullScreen(); });
+            saveSetlistBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const name = prompt('セットリスト名を入力してください:');
+                if (name) saveSetlist(name, currentFiles);
+                resetControlsTimeout();
+            });
+        };
+
+        const updateSheetMusic = () => {
+            if (musicSheets.length > 0) {
+                sheetMusicImg.src = musicSheets[currentPage];
+                pageIndicator.textContent = `${currentPage + 1} / ${totalPages}`;
+            }
+        };
+        
+        const preloadImages = () => {
+            musicSheets.forEach(src => { (new Image()).src = src; });
+        };
+
+        const nextPage = () => {
+            if (totalPages > 0) {
+                currentPage = (currentPage + 1) % totalPages;
+                updateSheetMusic();
+            }
+        };
+
+        const prevPage = () => {
+            if (totalPages > 0) {
+                currentPage = (currentPage - 1 + totalPages) % totalPages;
+                updateSheetMusic();
+            }
+        };
+        
+        const handleSwipe = () => {
+            if (touchEndX < touchStartX - 50) nextPage();
+            if (touchEndX > touchStartX + 50) prevPage();
+        };
+
+        const handleViewerClick = (e) => {
+            const screenWidth = window.innerWidth;
+            const clickX = e.clientX;
+            if (clickX < screenWidth / 3) prevPage();
+            else if (clickX > screenWidth * 2 / 3) nextPage();
+            else toggleControls();
+        };
+
+        // --- UIコントロール (ビューア) ---
+        const showControls = () => {
+            isControlsVisible = true;
+            controlsOverlay.style.opacity = '1';
+            controlsOverlay.style.pointerEvents = 'auto';
+            resetControlsTimeout();
+        };
+        const hideControls = () => {
+            isControlsVisible = false;
+            controlsOverlay.style.opacity = '0';
+            controlsOverlay.style.pointerEvents = 'none';
+            clearTimeout(controlsTimeout);
+        };
+        const toggleControls = () => { isControlsVisible ? hideControls() : showControls(); };
+        const resetControlsTimeout = () => {
+            clearTimeout(controlsTimeout);
+            controlsTimeout = setTimeout(hideControls, 4000);
+        };
+        const toggleFullScreen = () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+            resetControlsTimeout();
+        };
+        
+        init();
+    });
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(() => console.log('Service Worker registered ✅'))
+    .catch(err => console.error('SW登録失敗:', err));
+}
+      
+    </script>
+</body>
+</html>
+
+
