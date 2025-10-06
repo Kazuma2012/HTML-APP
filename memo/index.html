@@ -1,0 +1,90 @@
+
+
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>ログインページ</title>
+  <style>
+    body { font-family: sans-serif; background:#f0f0f0; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
+    #loginBox { background:#fff; padding:2rem; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.2); max-width:400px; width:100%; }
+    input { width:100%; padding:0.5rem; margin-bottom:1rem; border:1px solid #ccc; border-radius:6px; font-size:1rem; }
+    button { width:100%; padding:0.7rem; font-size:1.1rem; border:none; border-radius:6px; background:#2196f3; color:#fff; cursor:pointer; }
+    button:hover { background:#1976d2; }
+    #errorMsg { color:red; margin-bottom:1rem; min-height:1.2em; }
+  </style>
+</head>
+<body>
+
+<div id="loginBox">
+  <h2>ログイン</h2>
+  <div id="errorMsg"></div>
+  <input type="text" id="accountId" placeholder="アカウントID（6桁数字）" maxlength="6" />
+  <input type="password" id="password" placeholder="パスワード" />
+  <button id="loginBtn">ログイン</button>
+  <button id="toSignupBtn" style="margin-top:0.5rem; background:#4caf50;">新規登録はこちら</button>
+</div>
+
+<script>
+  const loginBtn = document.getElementById('loginBtn');
+  const errorMsg = document.getElementById('errorMsg');
+  const accountIdInput = document.getElementById('accountId');
+  const passwordInput = document.getElementById('password');
+  const toSignupBtn = document.getElementById('toSignupBtn');
+
+  loginBtn.addEventListener('click', () => {
+    errorMsg.textContent = '';
+    const id = accountIdInput.value.trim();
+    const pw = passwordInput.value;
+
+    if (id === 'masuta' && pw === 'kazuma1121') {
+      window.location.href = 'admin.html';
+      return;
+    }
+
+    if (id.length !== 6 || !/^\d+$/.test(id)) {
+      errorMsg.textContent = 'アカウントIDは6桁の数字で入力してください';
+      return;
+    }
+
+    if (!pw) {
+      errorMsg.textContent = 'パスワードを入力してください';
+      return;
+    }
+
+    const userData = localStorage.getItem('user_' + id);
+    if (!userData) {
+      errorMsg.textContent = 'アカウントが存在しません';
+      return;
+    }
+
+    const user = JSON.parse(userData);
+    if (user.password !== pw) {
+      errorMsg.textContent = 'パスワードが違います';
+      return;
+    }
+
+    if (user.isLocked) {
+      errorMsg.textContent = 'このアカウントはロックされています';
+      return;
+    }
+
+    // ✅ ログイン成功
+    window.location.href = `memo.html?accountId=${id}`;
+  });
+
+  toSignupBtn.addEventListener('click', () => {
+    window.location.href = 'signup.html'; // 新規登録ページに遷移
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => console.log('✅ Service Worker registered'))
+      .catch(err => console.error('❌ SW registration failed:', err));
+  }
+</script>
+
+
+</body>
+</html>
