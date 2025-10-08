@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>88-key Web Piano</title>
+<style>
+:root{--white-key-aspect:4;}
+html,body{height:100%;margin:0;background:#111;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;user-select:none;-webkit-user-select:none;overflow:hidden;}
+.keyboard-wrap{height:100vh;width:100%;box-sizing:border-box;overflow-x:auto;overflow-y:hidden;white-space:nowrap;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;padding:0;margin:0;touch-action:pan-x;}
+.keyboard{position:relative;height:100%;display:inline-block;}
+.white-key{position:relative;display:inline-block;vertical-align:bottom;height:100%;box-sizing:border-box;border:1px solid #222;background:linear-gradient(#fff,#eee);box-shadow: inset 0 -6px 8px rgba(0,0,0,0.06);border-radius:0 0 4px 4px;margin:0;touch-action:none;}
+.black-key{position:absolute;top:0;height:62%;z-index:3;background:linear-gradient(#111,#000);border-radius:0 0 3px 3px;box-shadow:0 6px 10px rgba(0,0,0,0.6);border:1px solid #000;margin:0;touch-action:none;}
+.white-key.active{background:linear-gradient(#e6f0ff,#dbeaff);transform:translateY(2px);box-shadow: inset 0 -4px 6px rgba(0,0,0,0.08);}
+.black-key.active{background:linear-gradient(#222,#111);transform:translateY(2px);box-shadow:0 3px 6px rgba(0,0,0,0.6);}
+.keyboard-wrap::-webkit-scrollbar{ height:22px; }
+.keyboard-wrap::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.12); border-radius:8px; }
+.keyboard-wrap::-webkit-scrollbar-track{ background:transparent; }
+
+/* 設定モーダル */
+#settingsModal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+background:#222;color:#fff;padding:30px;border-radius:12px;box-shadow:0 0 20px rgba(0,0,0,0.8);z-index:10;}
+#settingsModal input{width:100%;}
+#settingsModal button{margin-top:10px;padding:6px 12px;}
+</style>
+</head>
+<body>
+<div class="keyboard-wrap" id="keyboardWrap" aria-hidden="true">
+  <div class="keyboard" id="keyboard"></div>
+</div>
+
+<!-- 設定モーダル -->
+<div id="settingsModal">
+  <h2>設定</h2>
+  <label>基準周波数 (A4): <span id="freqLabel">442.0</span>Hz</label><br>
+  <input type="range" id="freqSlider" min="430" max="450" step="0.1" value="442"><br>
+  <button id="closeBtn">閉じる</button>
+</div>
+
+<script>
+const MIDI_START=21,MIDI_END=108,TOTAL_KEYS=MIDI_END-MIDI_START+1;
+const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+let audioCtx=null, masterGain=null;
+const activeVoices=new Map();
+const keyboardEl=document.getElementById('keyboard'), wrapEl=document.getElementById('keyboardWrap');
+let spacePressed=false; // スペースキー押下状態
+let baseFreq = 442; // A4基準周波数（モーダルで自由に変更）
+
+function computeKeySizes(){const vh=window.innerHeight;const whiteKeyWidth=Math.max(20,Math.round(vh/6));const whiteKeyHeight=vh;const blackKeyWidth=Math.round(whiteKeyWidth*0.62);const blackKeyHeight=Math.round(whiteKeyHeight*0.62);return {whiteKeyWidth,whiteKeyHeight,blackKeyWidth,blackKeyHeight};}
+function isBlackKey(m){const mod=m%12;return[1,3,6,8,10].includes(mod);}
+function midiToFreq(m){return baseFreq*Math.pow(2,(m-69)/12);}
+function buildKeyboard(){
+  keyboardEl.innerHTML='';
+  const {whiteKeyWidth,whiteKeyHeight,blackKeyWidth,blackKeyHeight}=computeKeySizes();
+  let whiteCount=0;
+  for(let m=MIDI_START;m<=MIDI_END;m++){if(!isBlackKey(m))whiteCount++;}
+  keyboardEl.style.width=(whiteCount*whiteKeyWidth)+'px';keyboardEl.style.height=whiteKeyHeight+'px';
+  const blackKeyData=[];let currentWhiteIndex=0;
+  for(let m=MIDI_START;m<=MIDI_END;m++){
+    if(isBlackKey(m)){blackKeyData.push({midi:m,whiteIndex:currentWhiteIndex});}
+    else{const wk=document.createElement('div');wk.className='white-key';wk.style.width=whiteKeyWidth+'px';wk.dataset.midi=m;wk.dataset.type='white';keyboardEl.appendChild(wk);currentWhiteIndex++;}}
+  for(const bk of blackKeyData){const el=document.createElement('div');el.className='black-key';el.style.width=blackKeyWidth+'px';el.style.height=blackKeyHeight+'px';const left=bk.whiteIndex*whiteKeyWidth-(blackKeyWidth/2);el.style.left=Math.round(left)+'px';el.dataset.midi=bk.midi;el.dataset.type='black';keyboardEl.appendChild(el);}
+}
+
+function initAudio(){if(!audioCtx){audioCtx=new AudioContextClass();masterGain=audioCtx.createGain();masterGain.gain.value=0.8;masterGain.connect(audioCtx.destination);}}
+
+function startNote(midi,pointerKey){
+  initAudio();const now=audioCtx.currentTime;if(activeVoices.has(pointerKey))return;
+  const freq=midiToFreq(midi);
+  const gainNode=audioCtx.createGain();gainNode.gain.setValueAtTime(0.0001,now);gainNode.connect(masterGain);
+  const osc1=audioCtx.createOscillator();osc1.type='sine';osc1.frequency.value=freq;const g1=audioCtx.createGain();g1.gain.value=0.6;osc1.connect(g1);g1.connect(gainNode);
+  const osc2=audioCtx.createOscillator();osc2.type='sine';osc2.frequency.value=freq*2;const g2=audioCtx.createGain();g2.gain.value=0.08;osc2.connect(g2);g2.connect(gainNode);
+  const attack=0.012,sustain=0.95;gainNode.gain.cancelScheduledValues(now);gainNode.gain.setValueAtTime(0.0001,now);gainNode.gain.linearRampToValueAtTime(sustain,now+attack);
+  osc1.start(now);osc2.start(now);
+  activeVoices.set(pointerKey,{midi,oscNodes:[osc1,osc2],gainNode,stopped:false,waitingRelease:false});
+  highlightKey(midi,true);
+}
+
+function stopNote(pointerKey){
+  const voice=activeVoices.get(pointerKey);
+  if(!voice||voice.stopped)return;
+  if(spacePressed){voice.waitingRelease=true;return;}
+  voice.stopped=true;
+  const now=audioCtx.currentTime;
+  const release=0.22;
+  try{
+    voice.gainNode.gain.cancelScheduledValues(now);
+    const currentGain=voice.gainNode.gain.value||0;
+    voice.gainNode.gain.setValueAtTime(currentGain,now);
+    voice.gainNode.gain.linearRampToValueAtTime(0,now+release);
+    const stopAt=now+release+0.02;voice.oscNodes.forEach(osc=>{try{osc.stop(stopAt);}catch(e){}});
+    setTimeout(()=>{try{voice.oscNodes.forEach(o=>o.disconnect());voice.gainNode.disconnect();}catch(e){}},Math.max(30,Math.round((release+0.05)*1000)));
+  }catch(err){try{voice.oscNodes.forEach(o=>{o.stop();o.disconnect();});voice.gainNode.disconnect();}catch(e){}}
+  highlightKey(voice.midi,false);
+  activeVoices.delete(pointerKey);
+}
+
+function highlightKey(midi,on){const el=keyboardEl.querySelector('[data-midi="'+midi+'"]');if(el){if(on)el.classList.add('active');else el.classList.remove('active');}}
+
+function setupPointerHandling(){
+  function elementAtPoint(x,y){
+    const topEl=document.elementFromPoint(x,y);if(!topEl)return null;if(!keyboardEl.contains(topEl))return null;if(topEl.dataset&&topEl.dataset.midi)return topEl;
+    let el=topEl;while(el&&el!==keyboardEl){if(el.dataset&&el.dataset.midi)return el;el=el.parentElement;}return null;
+  }
+
+  wrapEl.addEventListener('pointerdown',ev=>{
+    if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+    const keyEl=elementAtPoint(ev.clientX,ev.clientY);
+    if(keyEl&&keyEl.dataset&&keyEl.dataset.midi){const midi=parseInt(keyEl.dataset.midi,10);const pid=ev.pointerId;startNote(midi,'p'+pid);try{keyEl.setPointerCapture(ev.pointerId);}catch(e){}}
+  },{passive:true});
+
+  wrapEl.addEventListener('pointerup',ev=>{
+    const pid='p'+ev.pointerId;const voice=activeVoices.get(pid);
+    if(voice&&voice.waitingRelease&&!spacePressed){stopNote(pid);} else stopNote(pid);
+    try{const active=document.activeElement;if(active&&active.hasPointerCapture)active.releasePointerCapture(ev.pointerId);}catch(e){}
+  });
+  wrapEl.addEventListener('pointercancel',ev=>stopNote('p'+ev.pointerId));
+  wrapEl.addEventListener('pointermove',ev=>{
+    const pid='p'+ev.pointerId;if(activeVoices.has(pid)){
+      let keyEl=document.elementFromPoint(ev.clientX,ev.clientY);let found=null;let el=keyEl;
+      while(el&&el!==keyboardEl){if(el&&el.dataset&&el.dataset.midi){found=el;break;}el=el.parentElement;}
+      if(found){const midi=parseInt(found.dataset.midi,10);const current=activeVoices.get(pid);if(current&&current.midi!==midi){stopNote(pid);startNote(midi,pid);}}
+    }
+  },{passive:true});
+}
+
+wrapEl.addEventListener('wheel',ev=>{if(Math.abs(ev.deltaX)<Math.abs(ev.deltaY)){wrapEl.scrollLeft+=ev.deltaY;ev.preventDefault();}},{passive:false});
+
+let resizeTimer=null;function handleResize(){buildKeyboard();if(resizeTimer)clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{},120);}
+
+window.addEventListener('keydown',e=>{if(e.code==='Space')spacePressed=true;});
+window.addEventListener('keyup',e=>{
+  if(e.code==='Space'){spacePressed=false;
+    activeVoices.forEach((voice,pid)=>{if(voice.waitingRelease)stopNote(pid);});
+  }
+});
+
+function init(){buildKeyboard();setupPointerHandling();window.addEventListener('resize',handleResize);}
+init();
+window.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ＝＝＝＝＝＝ 設定モーダル関連 ＝＝＝＝＝＝
+const modal = document.getElementById('settingsModal');
+const freqSlider = document.getElementById('freqSlider');
+const freqLabel = document.getElementById('freqLabel');
+
+// ESCでモーダル開閉
+window.addEventListener('keydown', e=>{
+  if(e.code==='Escape') modal.style.display = (modal.style.display==='none') ? 'block' : 'none';
+});
+
+// モーダル閉じる
+document.getElementById('closeBtn').addEventListener('click', ()=> modal.style.display='none');
+
+// スライダーでA4周波数変更
+freqSlider.addEventListener('input', ()=>{
+  baseFreq = parseFloat(freqSlider.value);
+  freqLabel.textContent = baseFreq.toFixed(1);
+});
+</script>
+</body>
+</html>
